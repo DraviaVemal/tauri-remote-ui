@@ -74,6 +74,7 @@ function preparePackageFile() {
     types: pkg.types,
     main: pkg.main,
     module: pkg.module,
+    repository: pkg.repository,
     exports: {
       ".": {
         "types": "./index.d.ts",

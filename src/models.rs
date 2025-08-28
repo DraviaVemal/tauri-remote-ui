@@ -45,10 +45,9 @@ pub struct EmitResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteUiConfig {
-    allowed_origin: OriginType,
-    port: Option<u16>,
-    bundle_path: Option<String>,
-    mode: String,
+    pub(crate) allowed_origin: OriginType,
+    pub(crate) port: Option<u16>,
+    pub(crate) bundle_path: Option<String>,
 }
 
 impl Default for RemoteUiConfig {
@@ -57,7 +56,6 @@ impl Default for RemoteUiConfig {
             allowed_origin: OriginType::Localhost,
             port: None,
             bundle_path: None,
-            mode: "Only one active window mode!".to_owned(),
         }
     }
 }

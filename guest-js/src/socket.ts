@@ -21,6 +21,12 @@ function getWsUrl(): string {
     return wsUrl;
 }
 
+function getUrl(): string {
+    const loc = window.location;
+    const wsUrl = `${loc.protocol}//${loc.host}/remote_ui`;
+    return wsUrl;
+}
+
 /**
  * Initialize the WebSocket connection
  * This should be called once at the start of your application
@@ -49,6 +55,7 @@ export function initWebSocket(): void {
                     ws = null;
                     wsReady = null;
                     console.info("Remote Dis-Connected.");
+                    window.location.replace(getUrl());
                 };
                 ws!.onerror = (e) => {
                     reject(e);

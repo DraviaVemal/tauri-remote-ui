@@ -3,12 +3,14 @@ use actix_files::Files;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_ws::{Message, Session};
 use futures_util::StreamExt;
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
+    env,
     net::TcpListener,
     sync::{Arc, RwLock},
 };
-use tauri::{AppHandle, Error, Manager};
+use tauri::{AppHandle, Error, Manager, Url};
 use tokio::sync::Notify;
 
 pub trait RemoteUiExt {
@@ -38,7 +40,23 @@ impl RemoteUiExt for AppHandle {
 async fn remote_ui_active(app_handle: web::Data<Arc<AppHandle>>) -> impl Responder {
     let app = app_handle.state::<Arc<RwLock<RemoteUi>>>();
     let remote_ui_config = app.read().unwrap().rpc_server.remote_ui_config.clone();
-    HttpResponse::Ok().json(remote_ui_config)
+    let mut value = serde_json::to_value(&remote_ui_config).unwrap();
+    if let Value::Object(ref mut map) = value {
+        map.insert("Plugin".to_string(), json!("tauri-remote-ui"));
+        map.insert(
+            "Status".to_string(),
+            json!("This Window is Dis-Connected as another one opened"),
+        );
+        // Get Tauri app version
+        let app_version = app_handle.package_info().version.to_string();
+        map.insert("app_version".to_string(), json!(app_version));
+        // Get plugin version from Cargo.toml env var if set at build time
+        map.insert(
+            "plugin_version".to_string(),
+            json!(env!("CARGO_PKG_VERSION")),
+        );
+    }
+    HttpResponse::Ok().body(serde_json::to_string_pretty(&value).unwrap())
 }
 
 pub struct RpcServer {
@@ -72,7 +90,7 @@ impl RpcServer {
             Err(Error::IllegalEventName("Server Already Running".to_owned()))
         } else {
             self.remote_ui_config = remote_ui_config.clone();
-            self.spawn_http_server(self.stop_signal.clone(), &remote_ui_config)
+            self.spawn_http_server(self.stop_signal.clone())
         }
     }
 
@@ -88,21 +106,27 @@ impl RpcServer {
         }
     }
     /// Spawns the Actix HTTP server inside tokio task of tauri
-    fn spawn_http_server(
-        &mut self,
-        stop_signal: Arc<Notify>,
-        remote_ui_config: &RemoteUiConfig,
-    ) -> Result<(String, String), Error> {
-        let origin: &str = remote_ui_config.get_allowed_origin().into();
-        let static_path = remote_ui_config
-            .get_bundle_path()
-            .unwrap_or("./static".to_owned());
-        let listner = if let Some(port) = remote_ui_config.get_port() {
+    fn spawn_http_server(&mut self, stop_signal: Arc<Notify>) -> Result<(String, String), Error> {
+        let origin: &str = self.remote_ui_config.get_allowed_origin().into();
+        let dist_path = if let Some(frontend_path) = self.app.config().build.frontend_dist.as_ref()
+        {
+            if Url::parse(&frontend_path.to_string()).is_ok() {
+                return Err(Error::UnknownPath);
+            } else {
+                frontend_path.to_string()
+            }
+        } else {
+            "../dist".to_owned()
+        };
+        let static_path = self.remote_ui_config.get_bundle_path().unwrap_or(dist_path);
+        let listner = if let Some(port) = self.remote_ui_config.get_port() {
             TcpListener::bind((origin, port))?
         } else {
             TcpListener::bind((origin, 0))?
         };
         let port = listner.local_addr()?.port().to_string();
+        self.remote_ui_config.port = Some(port.parse::<u16>().unwrap());
+        self.remote_ui_config.bundle_path = Some(static_path.clone());
         let app_handle = self.app.clone();
         tauri::async_runtime::spawn(async move {
             let server = HttpServer::new(move || {
@@ -127,6 +151,18 @@ impl RpcServer {
             }
         });
         self.is_active = true;
+
+        #[cfg(debug_assertions)]
+        {
+            let window = self.app.get_webview_window("main").unwrap();
+            // window.minimize().unwrap();
+            let current_url = window.url().unwrap();
+            let parsed = Url::parse(current_url.as_str()).unwrap();
+            let host = parsed.domain().unwrap();
+            let scheme = parsed.scheme();
+            let new_url = format!("{}://{}:{}/remote_ui", scheme, host, port);
+            window.navigate(Url::parse(&new_url).unwrap()).unwrap();
+        }
         Ok((origin.to_owned(), port))
     }
 

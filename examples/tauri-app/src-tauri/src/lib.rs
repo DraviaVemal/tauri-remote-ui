@@ -5,13 +5,7 @@ use tauri_remote_ui::{EmitterExt, RemoteUiConfig, RemoteUiExt};
 
 #[tauri::command]
 fn enable_server(app: AppHandle) -> String {
-    match app.start_remote_ui(
-        RemoteUiConfig::default()
-            .set_bundle_path(Some(
-                "/home/dravia/tauri-remote-ui/examples/tauri-app/dist".to_owned(),
-            ))
-            .set_port(Some(8080)),
-    ) {
+    match app.start_remote_ui(RemoteUiConfig::default()) {
         Ok((origin, port)) => format!("Server Started at {origin}:{port}"),
         Err(err) => format!("Server Error {:?}", err),
     }
