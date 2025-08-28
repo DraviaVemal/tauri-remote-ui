@@ -155,13 +155,17 @@ impl RpcServer {
         #[cfg(debug_assertions)]
         {
             let window = self.app.get_webview_window("main").unwrap();
-            // window.minimize().unwrap();
             let current_url = window.url().unwrap();
             let parsed = Url::parse(current_url.as_str()).unwrap();
             let host = parsed.domain().unwrap();
             let scheme = parsed.scheme();
+            let window = window.clone();
             let new_url = format!("{}://{}:{}/remote_ui", scheme, host, port);
-            window.navigate(Url::parse(&new_url).unwrap()).unwrap();
+            // Delay navigation by 5 seconds
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                window.navigate(Url::parse(&new_url).unwrap()).unwrap();
+            });
         }
         Ok((origin.to_owned(), port))
     }
