@@ -80,15 +80,21 @@ async fn wildcard_get_handler(
             let file_path = format!("{}/{}", static_path, file_path);
             println!("Reading File : {}", &file_path);
             if let Ok(bytes) = std::fs::read(&file_path) {
-                return Ok(HttpResponse::Ok().body(bytes));
+                let content_type = mime_guess::from_path(&file_path).first_or_octet_stream();
+                return Ok(HttpResponse::Ok()
+                    .content_type(content_type.to_string())
+                    .body(bytes));
             }
         }
     }
     #[cfg(not(debug_assertions))] // Release Mode Serve from handle assert
     {
         println!("Reading Asset : {}", &file_path);
+        let content_type = mime_guess::from_path(&file_path).first_or_octet_stream();
         if let Some(assert) = app_handle.asset_resolver().get(file_path) {
-            return Ok(HttpResponse::Ok().body(assert.bytes));
+            return Ok(HttpResponse::Ok()
+                .content_type(content_type.to_string())
+                .body(assert.bytes));
         }
     }
     Ok(HttpResponse::NotFound().body("File not found"))

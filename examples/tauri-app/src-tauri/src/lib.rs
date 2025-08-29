@@ -5,7 +5,7 @@ use tauri_remote_ui::{EmitterExt, RemoteUiConfig, RemoteUiExt};
 
 #[tauri::command]
 fn enable_server(app: AppHandle) -> String {
-    match app.start_remote_ui(RemoteUiConfig::default()) {
+    match app.start_remote_ui(RemoteUiConfig::default().set_port(Some(9090))) {
         Ok((origin, port)) => format!("Server Started at {origin}:{port}"),
         Err(err) => format!("Server Error {:?}", err),
     }
