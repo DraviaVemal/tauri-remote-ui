@@ -144,8 +144,6 @@ impl RpcServer {
             tokio::select! {
                 _ = server => (),
                 _ = stop_signal.notified() => {
-                    // graceful shutdown
-
                     println!("Shutting down Actix server...");
                 }
             }
@@ -161,11 +159,12 @@ impl RpcServer {
             let scheme = parsed.scheme();
             let window = window.clone();
             let new_url = format!("{}://{}:{}/remote_ui", scheme, host, port);
-            // Delay navigation by 5 seconds
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                window.navigate(Url::parse(&new_url).unwrap()).unwrap();
-            });
+            window.eval(format!(
+                r#"
+                console.info("Tauri Remote UI Plugin Activated");
+                console.info("{}");"#,
+                new_url
+            ))?;
         }
         Ok((origin.to_owned(), port))
     }
