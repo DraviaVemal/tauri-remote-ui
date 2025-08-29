@@ -1,3 +1,7 @@
+// MIT License
+// Copyright (c) 2025 DraviaVemal
+// See LICENSE file in the root directory.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -48,6 +52,7 @@ pub struct RemoteUiConfig {
     pub(crate) allowed_origin: OriginType,
     pub(crate) port: Option<u16>,
     pub(crate) bundle_path: Option<String>,
+    pub(crate) custom_blocking_ui: Option<String>,
 }
 
 impl Default for RemoteUiConfig {
@@ -56,6 +61,7 @@ impl Default for RemoteUiConfig {
             allowed_origin: OriginType::Localhost,
             port: None,
             bundle_path: None,
+            custom_blocking_ui: None,
         }
     }
 }
@@ -72,6 +78,13 @@ impl RemoteUiConfig {
     }
 
     pub fn set_bundle_path(mut self, bundle_path: Option<String>) -> RemoteUiConfig {
+        self.bundle_path = bundle_path;
+        self
+    }
+
+    /// Inject standardized HTML, CSS, and JavaScript to allow customization of the UI blocking message during a remote session
+    /// Pass %URL% where URL will be updated and %URL_INFO% for info path
+    pub fn set_custom_blocking_ui(mut self, bundle_path: Option<String>) -> RemoteUiConfig {
         self.bundle_path = bundle_path;
         self
     }

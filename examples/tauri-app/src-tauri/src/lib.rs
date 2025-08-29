@@ -70,12 +70,6 @@ pub fn run() {
         ])
         .plugin(tauri_remote_ui::init())
         .setup(|app| {
-            #[cfg(debug_assertions)]
-            {
-                use tauri::Manager;
-                let window = app.get_webview_window("main").unwrap();
-                window.open_devtools();
-            }
             app.manage(Arc::new(RwLock::new(Counter { now: 0 })));
             Ok(())
         })

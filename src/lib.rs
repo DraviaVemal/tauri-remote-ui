@@ -1,3 +1,7 @@
+// MIT License
+// Copyright (c) 2025 DraviaVemal
+// See LICENSE file in the root directory.
+
 use tauri::{
     plugin::{Builder, TauriPlugin},
     Manager, Wry,
@@ -11,10 +15,10 @@ pub mod remote_ui;
 pub use error::{Error, Result};
 pub use remote_ui::*;
 
+/// Initializes the remote-ui Tauri plugin.
 pub fn init() -> TauriPlugin<Wry> {
     Builder::new("remote-ui")
         .setup(|app, api| {
-            // Setup the server lifecycle
             let remote_ui = remote_ui::init(app, api)?;
             app.manage(remote_ui);
             Ok(())

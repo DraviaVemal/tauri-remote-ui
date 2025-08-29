@@ -1,3 +1,7 @@
+// MIT License
+// Copyright (c) 2025 DraviaVemal
+// See LICENSE file in the root directory.
+
 use crate::{models::*, RemoteUi};
 use actix_web::{
     get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result as ActixResult,
@@ -11,7 +15,7 @@ use std::{
     net::TcpListener,
     sync::{Arc, RwLock},
 };
-use tauri::{AppHandle, Error, Manager, Url};
+use tauri::{AppHandle, Error, Manager, Url, WebviewWindow};
 use tokio::sync::Notify;
 
 pub trait RemoteUiExt {
@@ -146,6 +150,7 @@ impl RpcServer {
             }
         }
     }
+
     /// Spawns the Actix HTTP server inside tokio task of tauri
     fn spawn_http_server(&mut self, stop_signal: Arc<Notify>) -> Result<(String, String), Error> {
         let origin: &str = self.remote_ui_config.get_allowed_origin().into();
@@ -195,14 +200,9 @@ impl RpcServer {
         let parsed = Url::parse(current_url.as_str()).unwrap();
         let host = parsed.domain().unwrap();
         let scheme = parsed.scheme();
-        let window = window.clone();
-        let new_url = format!("{}://{}:{}/remote_ui", scheme, host, port);
-        window.eval(format!(
-            r#"
-            console.info("Tauri Remote UI Plugin Activated");
-            console.info("{}");"#,
-            new_url
-        ))?;
+        let new_url = format!("{}://{}:{}", scheme, host, port);
+        self.activate_remote_ui_mode(&window, &new_url, &self.remote_ui_config.custom_blocking_ui)
+            .unwrap();
         Ok((origin.to_owned(), port))
     }
 
@@ -257,5 +257,37 @@ impl RpcServer {
             }
         });
         Ok(response)
+    }
+
+    pub fn activate_remote_ui_mode(
+        &self,
+        window: &WebviewWindow,
+        url: &str,
+        custom_html: &Option<String>,
+    ) -> Result<(), tauri::Error> {
+        let html = if let Some(custom_html) = custom_html {
+            custom_html
+        } else {
+            &include_str!("default.html")
+                .replace("%URL%", url)
+                .replace("%URL_INFO%", &format!("{}/remote_ui", url))
+        };
+        // Save current URL and replace DOM content with HTML string
+        window.eval(&format!(
+            r#"(function() {{
+            // Replace entire body content with our HTML
+            document.body.innerHTML = `{}`;
+            
+            // Apply styles to html/body to ensure full coverage
+            document.body.style.margin = '0';
+            document.body.style.padding = '0';
+            document.documentElement.style.height = '100%';
+            document.body.style.height = '100%';
+            
+            console.info("Remote UI Plugin Activated");
+            console.info("Remote UI active at: {}")
+        }})();"#,
+            html, url
+        ))
     }
 }

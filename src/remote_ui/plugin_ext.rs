@@ -1,9 +1,13 @@
+// MIT License
+// Copyright (c) 2025 DraviaVemal
+// See LICENSE file in the root directory.
+
 use crate::{RpcServer, WsPayload};
 use actix_ws::Session;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
 use std::sync::{Arc, RwLock};
-use tauri::{plugin::PluginApi, AppHandle, Error, EventTarget, Listener, Manager, Runtime};
+use tauri::{plugin::PluginApi, AppHandle, Error, Listener, Manager, Runtime};
 
 pub fn init<R, C>(app: &AppHandle, _api: PluginApi<R, C>) -> crate::Result<Arc<RwLock<RemoteUi>>>
 where
@@ -93,22 +97,5 @@ impl RemoteUi {
             tauri::async_runtime::spawn(async move { send.text(json).await.unwrap() });
         }
         Ok(())
-    }
-
-    /// Emit message to target window to listen
-    pub fn emit_to<S>(&self, _target: EventTarget, event: &str, payload: S) -> Result<(), Error>
-    where
-        S: Serialize + Clone,
-    {
-        if let Some(session) = self.rpc_server.window_connections.get("main") {
-            let mut send = session.clone();
-            let json = json!({
-                "event":event,
-                "payload":payload
-            })
-            .to_string();
-            tauri::async_runtime::spawn(async move { send.text(json).await.unwrap() });
-        }
-        todo!("Not Yet Implemented");
     }
 }

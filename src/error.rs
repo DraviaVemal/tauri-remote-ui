@@ -1,3 +1,7 @@
+// MIT License
+// Copyright (c) 2025 DraviaVemal
+// See LICENSE file in the root directory.
+
 use serde::{ser::Serializer, Serialize};
 
 pub type Result<T> = std::result::Result<T, Error>;
