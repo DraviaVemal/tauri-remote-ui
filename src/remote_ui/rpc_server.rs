@@ -1,6 +1,7 @@
 use crate::{models::*, RemoteUi};
-use actix_files::Files;
-use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{
+    get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result as ActixResult,
+};
 use actix_ws::{Message, Session};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
@@ -57,6 +58,40 @@ async fn remote_ui_active(app_handle: web::Data<Arc<AppHandle>>) -> impl Respond
         );
     }
     HttpResponse::Ok().body(serde_json::to_string_pretty(&value).unwrap())
+}
+
+/// Handler for all wildcard GET routes: serve file from disk, then embedded, else 404
+async fn wildcard_get_handler(
+    req: HttpRequest,
+    app_handle: web::Data<Arc<AppHandle>>,
+) -> ActixResult<HttpResponse> {
+    // If the path ends with a slash or has no file extension, serve index.html
+    let mut file_path = req.path().trim_start_matches('/').to_string();
+    file_path = if file_path.ends_with('/') || !file_path.contains('.') {
+        format!("{}/index.html", &file_path.trim_end_matches('/'))
+    } else {
+        file_path
+    };
+    #[cfg(debug_assertions)]
+    {
+        let remote_state = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+        let remote_ui = remote_state.read().unwrap();
+        if let Some(static_path) = remote_ui.rpc_server.remote_ui_config.bundle_path.as_ref() {
+            let file_path = format!("{}/{}", static_path, file_path);
+            println!("Reading File : {}", &file_path);
+            if let Ok(bytes) = std::fs::read(&file_path) {
+                return Ok(HttpResponse::Ok().body(bytes));
+            }
+        }
+    }
+    #[cfg(not(debug_assertions))] // Release Mode Serve from handle assert
+    {
+        println!("Reading Asset : {}", &file_path);
+        if let Some(assert) = app_handle.asset_resolver().get(file_path) {
+            return Ok(HttpResponse::Ok().body(assert.bytes));
+        }
+    }
+    Ok(HttpResponse::NotFound().body("File not found"))
 }
 
 pub struct RpcServer {
@@ -134,7 +169,7 @@ impl RpcServer {
                     .app_data(web::Data::new(app_handle.clone()))
                     .service(remote_ui_active)
                     .route("/remote_ui_ws", web::get().to(Self::ws_handler))
-                    .service(Files::new("/", &static_path).index_file("index.html"))
+                    .default_service(web::get().to(wildcard_get_handler))
             })
             .listen(listner)
             .unwrap()
