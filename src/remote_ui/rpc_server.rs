@@ -149,23 +149,19 @@ impl RpcServer {
             }
         });
         self.is_active = true;
-
-        #[cfg(debug_assertions)]
-        {
-            let window = self.app.get_webview_window("main").unwrap();
-            let current_url = window.url().unwrap();
-            let parsed = Url::parse(current_url.as_str()).unwrap();
-            let host = parsed.domain().unwrap();
-            let scheme = parsed.scheme();
-            let window = window.clone();
-            let new_url = format!("{}://{}:{}/remote_ui", scheme, host, port);
-            window.eval(format!(
-                r#"
-                console.info("Tauri Remote UI Plugin Activated");
-                console.info("{}");"#,
-                new_url
-            ))?;
-        }
+        let window = self.app.get_webview_window("main").unwrap();
+        let current_url = window.url().unwrap();
+        let parsed = Url::parse(current_url.as_str()).unwrap();
+        let host = parsed.domain().unwrap();
+        let scheme = parsed.scheme();
+        let window = window.clone();
+        let new_url = format!("{}://{}:{}/remote_ui", scheme, host, port);
+        window.eval(format!(
+            r#"
+            console.info("Tauri Remote UI Plugin Activated");
+            console.info("{}");"#,
+            new_url
+        ))?;
         Ok((origin.to_owned(), port))
     }
 

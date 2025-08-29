@@ -16,16 +16,11 @@ import { ws, wsReady, initWebSocket, filterCollection } from '../../socket';
  */
 let msg_id = 0;
 export async function invoke<T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> {
-    initWebSocket();
-    // Tauri IPC
-    try {
-        if (((window as any).__TAURI_INTERNALS__ && (window as any).__TAURI_INTERNALS__.invoke) ||
-            (window as any).__TAURI__ && (window as any).__TAURI__.invoke) {
-            return await TauriInvoke(cmd, args, options);
-        } else {
-            throw new Error("Failed to Find Tauri handle")
-        }
-    } catch (e) {
+    if (((window as any).__TAURI_INTERNALS__ && (window as any).__TAURI_INTERNALS__.invoke) ||
+        (window as any).__TAURI__ && (window as any).__TAURI__.invoke) {
+        return await TauriInvoke(cmd, args, options);
+    } else {
+        initWebSocket();
         // If WebSocket is connecting, wait for it
         if (wsReady) {
             await wsReady;

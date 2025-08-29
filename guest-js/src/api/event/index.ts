@@ -15,15 +15,11 @@ import { initWebSocket, ws, wsReady } from '../../socket';
  * @param options - Options for the event listener
  */
 export async function listen<T>(event: EventName, handler: EventCallback<T>, options?: Options): Promise<UnlistenFn> {
-    initWebSocket();
-    try {
-        if (((window as any).__TAURI_INTERNALS__ && (window as any).__TAURI_INTERNALS__.invoke) ||
-            (window as any).__TAURI__ && (window as any).__TAURI__.invoke) {
-            return await TauriListen(event, handler, options);
-        } else {
-            throw new Error("Failed to Find Tauri handle")
-        }
-    } catch (e) {
+    if (((window as any).__TAURI_INTERNALS__ && (window as any).__TAURI_INTERNALS__.invoke) ||
+        (window as any).__TAURI__ && (window as any).__TAURI__.invoke) {
+        return await TauriListen(event, handler, options);
+    } else {
+        initWebSocket();
         // If WebSocket is connecting, wait for it
         if (wsReady) {
             await wsReady;
@@ -37,7 +33,8 @@ export async function listen<T>(event: EventName, handler: EventCallback<T>, opt
                         handler(data);
                     }
                 } catch (err) {
-                    console.error('Error handling WebSocket event', err);
+                    console.error(err);
+                    throw new Error('Error handling WebSocket event');
                 }
             };
 
@@ -48,7 +45,7 @@ export async function listen<T>(event: EventName, handler: EventCallback<T>, opt
                 ws?.removeEventListener('message', messageHandler);
             };
         } else {
-            throw new Error('No WebSocket or Tauri IPC available to invoke');
+            throw new Error("No WebSocket or Tauri IPC available to invoke");
         }
     }
 }
