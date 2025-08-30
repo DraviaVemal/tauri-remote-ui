@@ -14,8 +14,7 @@ const App: React.FC = () => {
     const lstn = async () => {
         try {
             await listen("counter", (event) => {
-                setCounter((item) => ++item);
-                console.log(event);
+                setCounter((event.payload as any).result);
             })
         } catch (err) {
             console.log("Main App : ", err)

@@ -12,6 +12,19 @@ fn enable_server(app: AppHandle) -> String {
 }
 
 #[tauri::command]
+fn disable_server(app: AppHandle) -> String {
+    match app.stop_remote_ui() {
+        Ok(()) => format!("Server Stoped"),
+        Err(err) => format!("Server Error {:?}", err),
+    }
+}
+
+#[tauri::command]
+fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 fn increment(app: AppHandle) {
     app.state::<Arc<RwLock<Counter>>>().write().unwrap().now += 1;
     let counter = app.state::<Arc<RwLock<Counter>>>().read().unwrap().now;
@@ -41,21 +54,8 @@ fn decrement(app: AppHandle) {
         .unwrap();
 }
 
-#[tauri::command]
-fn disable_server(app: AppHandle) -> String {
-    match app.stop_remote_ui() {
-        Ok(()) => format!("Server Stoped"),
-        Err(err) => format!("Server Error {:?}", err),
-    }
-}
-
-#[tauri::command]
-fn exit_app(app: AppHandle) {
-    app.exit(0);
-}
-
 pub struct Counter {
-    pub now: u32,
+    pub now: i32,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

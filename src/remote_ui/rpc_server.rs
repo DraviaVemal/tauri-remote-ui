@@ -4,7 +4,8 @@
 
 use crate::{models::*, RemoteUi};
 use actix_web::{
-    get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result as ActixResult,
+    get, http::KeepAlive, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+    Result as ActixResult,
 };
 use actix_ws::{Message, Session};
 use futures_util::StreamExt;
@@ -14,8 +15,9 @@ use std::{
     env,
     net::TcpListener,
     sync::{Arc, RwLock},
+    time::Duration,
 };
-use tauri::{AppHandle, Error, Manager, Url, WebviewWindow};
+use tauri::{async_runtime, AppHandle, Error, Manager, Url, WebviewWindow};
 use tokio::sync::Notify;
 
 pub trait RemoteUiExt {
@@ -82,7 +84,6 @@ async fn wildcard_get_handler(
         let remote_ui = remote_state.read().unwrap();
         if let Some(static_path) = remote_ui.rpc_server.remote_ui_config.bundle_path.as_ref() {
             let file_path = format!("{}/{}", static_path, file_path);
-            println!("Reading File : {}", &file_path);
             if let Ok(bytes) = std::fs::read(&file_path) {
                 let content_type = mime_guess::from_path(&file_path).first_or_octet_stream();
                 return Ok(HttpResponse::Ok()
@@ -93,7 +94,6 @@ async fn wildcard_get_handler(
     }
     #[cfg(not(debug_assertions))] // Release Mode Serve from handle assert
     {
-        println!("Reading Asset : {}", &file_path);
         let content_type = mime_guess::from_path(&file_path).first_or_octet_stream();
         if let Some(assert) = app_handle.asset_resolver().get(file_path) {
             return Ok(HttpResponse::Ok()
@@ -143,8 +143,10 @@ impl RpcServer {
         if self.is_active {
             self.is_active = false;
             self.stop_signal.notify_one();
+            let window = self.app.get_webview_window("main").unwrap();
+            window.reload().unwrap();
             for (_key, session) in self.window_connections.drain() {
-                tauri::async_runtime::spawn(async move {
+                async_runtime::spawn(async move {
                     let _ = session.close(None).await;
                 });
             }
@@ -174,7 +176,7 @@ impl RpcServer {
         self.remote_ui_config.port = Some(port.parse::<u16>().unwrap());
         self.remote_ui_config.bundle_path = Some(static_path.clone());
         let app_handle = self.app.clone();
-        tauri::async_runtime::spawn(async move {
+        async_runtime::spawn(async move {
             let server = HttpServer::new(move || {
                 App::new()
                     .app_data(web::Data::new(app_handle.clone()))
@@ -184,15 +186,26 @@ impl RpcServer {
             })
             .listen(listner)
             .unwrap()
-            .disable_signals() // important inside Tauri
+            .keep_alive(KeepAlive::Disabled)
+            .shutdown_timeout(1)
+            .client_disconnect_timeout(Duration::from_millis(1))
+            .disable_signals()
             .run();
 
+            let server_handle = server.handle();
+
+            println!("Going into select");
             tokio::select! {
                 _ = server => (),
                 _ = stop_signal.notified() => {
-                    println!("Shutting down Actix server...");
+                    async_runtime::spawn(async move {
+                        server_handle.stop(true).await;
+                        println!("Server Stopped");
+                    });
+                    println!("Shutting down Remote UI server...");
                 }
             }
+            println!("Crossed select");
         });
         self.is_active = true;
         let window = self.app.get_webview_window("main").unwrap();
@@ -246,7 +259,6 @@ impl RpcServer {
                             .await;
                     }
                     Message::Close(reason) => {
-                        println!("Closed Connection");
                         let _ = session.close(reason).await;
                         break;
                     }
@@ -264,7 +276,7 @@ impl RpcServer {
         window: &WebviewWindow,
         url: &str,
         custom_html: &Option<String>,
-    ) -> Result<(), tauri::Error> {
+    ) -> Result<(), Error> {
         let html = if let Some(custom_html) = custom_html {
             custom_html
         } else {
