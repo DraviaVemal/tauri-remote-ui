@@ -79,7 +79,6 @@ async fn handle_request(
     app_handle: Arc<AppHandle>,
 ) -> Result<Response<Full<Bytes>>, Error> {
     let path = request.uri().path().to_string();
-
     match (request.method().as_str(), path.as_str()) {
         ("GET", "/remote_ui") => {
             let app = app_handle.state::<Arc<RwLock<RemoteUi>>>();
@@ -103,14 +102,12 @@ async fn handle_request(
             let resp = serde_json::to_string(&value)?;
             Ok(Response::new(Full::new(Bytes::from(resp))))
         }
-
         ("GET", "/remote_ui_ws") => {
             if hyper_tungstenite::is_upgrade_request(&request) {
                 match hyper_tungstenite::upgrade(request, None) {
                     Ok((response, websocket)) => {
-                        let state = Arc::clone(&app_handle);
-                        tokio::spawn(async move {
-                            if let Err(e) = serve_websocket(websocket, state).await {
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = ws_handle(websocket, Arc::clone(&app_handle)).await {
                                 println!("WebSocket error: {:?}", e);
                             }
                         });
@@ -125,14 +122,9 @@ async fn handle_request(
                     }
                 }
             } else {
-                println!("Not WS Upgrade Request");
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body(Full::new(Bytes::from("Expected WebSocket request")))
-                    .unwrap())
+                Err(Error::FailedToReceiveMessage)
             }
         }
-
         ("GET", path) => wildcard_get_handler(path, app_handle)
             .await
             .map_err(|err| Error::AssetNotFound(format!("File serving failed. {:?}", err))),
@@ -149,10 +141,7 @@ fn not_found() -> Result<Response<Full<Bytes>>, tauri::http::Error> {
 }
 
 /// Handle a websocket connection.
-async fn serve_websocket(
-    websocket: HyperWebsocket,
-    app_handle: Arc<AppHandle>,
-) -> Result<(), Error> {
+async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Result<(), Error> {
     match websocket.await {
         Ok(ws_stream) => {
             let (tx, mut rx) = ws_stream.split();
