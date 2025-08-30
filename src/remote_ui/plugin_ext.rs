@@ -3,11 +3,15 @@
 // See LICENSE file in the root directory.
 
 use crate::{RpcServer, WsPayload};
-use actix_ws::Session;
+use futures_util::{stream::SplitSink, SinkExt};
+use hyper::upgrade::Upgraded;
+use hyper_tungstenite::{tungstenite::Message, WebSocketStream};
+use hyper_util::rt::TokioIo;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tauri::{plugin::PluginApi, AppHandle, Error, Listener, Manager, Runtime};
+use tokio::sync::{Mutex, RwLock};
 
 pub fn init<R, C>(app: &AppHandle, _api: PluginApi<R, C>) -> crate::Result<Arc<RwLock<RemoteUi>>>
 where
@@ -22,6 +26,7 @@ where
     Ok(remote_ui)
 }
 
+#[derive(Debug, Clone)]
 /// Access to the remote-ui APIs.
 pub struct RemoteUi {
     pub(crate) app: Arc<AppHandle>,
@@ -36,7 +41,7 @@ impl RemoteUi {
     pub(crate) async fn invoke_rpc(
         &self,
         payload: String,
-        mut session: Session,
+        session: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
     ) -> Result<(), Error> {
         let ws_payload: WsPayload = serde_json::from_str(&payload)?;
         let window = self.app.get_webview_window("main").unwrap();
@@ -49,8 +54,13 @@ impl RemoteUi {
                 let id = ws_payload.id;
                 tauri::async_runtime::spawn(async move {
                     let _ = session
-                        .text(json!({"id":id,"payload":payload}).to_string())
-                        .await;
+                        .lock()
+                        .await
+                        .send(Message::text(
+                            json!({"id":id,"payload":payload}).to_string(),
+                        ))
+                        .await
+                        .unwrap();
                 });
             });
         let js = format!(
@@ -87,15 +97,15 @@ impl RemoteUi {
 
     /// Emit message to target window to listen
     pub fn emit<P: Serialize + Clone>(&self, event: &str, payload: P) -> Result<(), Error> {
-        if let Some(session) = self.rpc_server.window_connections.get("main") {
-            let mut send = session.clone();
-            let json = json!({
-                "event":event,
-                "payload":payload
-            })
-            .to_string();
-            tauri::async_runtime::spawn(async move { send.text(json).await.unwrap() });
-        }
+        // if let Some(session) = self.rpc_server.window_connections.get("main") {
+        //     let mut send = session.clone();
+        //     let json = json!({
+        //         "event":event,
+        //         "payload":payload
+        //     })
+        //     .to_string();
+        //     tauri::async_runtime::spawn(async move { send.text(json).await.unwrap() });
+        // }
         Ok(())
     }
 }

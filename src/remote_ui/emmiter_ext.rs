@@ -4,8 +4,11 @@
 
 use crate::RemoteUi;
 use serde::Serialize;
-use std::sync::{Arc, RwLock};
-use tauri::{Emitter, Error, EventTarget, Manager, Runtime, WebviewWindow};
+use std::sync::Arc;
+use tauri::{
+    async_runtime::block_on, Emitter, Error, EventTarget, Manager, Runtime, WebviewWindow,
+};
+use tokio::sync::RwLock;
 
 pub trait EmitterExt<R>
 where
@@ -36,11 +39,13 @@ where
     /// "tauri-remote-ui" plugin controls switch between WS or IPC
     fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        if remote_ui.read().unwrap().is_rpc_active() {
-            remote_ui.read().unwrap().emit(event, payload)
-        } else {
-            Emitter::emit(self, event, payload)
-        }
+        block_on(async {
+            if remote_ui.read().await.is_rpc_active() {
+                remote_ui.read().await.emit(event, payload)
+            } else {
+                Emitter::emit(self, event, payload)
+            }
+        })
     }
 
     /// This method still use Tauri Yet to be supported in "tauri-remote-ui" plugin
