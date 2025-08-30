@@ -43,13 +43,44 @@ impl RemoteUiExt for AppHandle {
     }
 }
 
+async fn create_hyper_server(
+    origin: &str,
+    port: u16,
+    app_handle: Arc<AppHandle>,
+) -> Result<(), Error> {
+    let listener = TcpListener::bind((origin, port)).await?;
+    loop {
+        let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+        if !remote_ui.read().await.rpc_server.get_is_active() {
+            break;
+        }
+        let (stream, _) = listener.accept().await?;
+
+        let io = TokioIo::new(stream);
+        let req_app_handle = app_handle.clone();
+
+        tauri::async_runtime::spawn(async move {
+            if let Err(err) = http1::Builder::new()
+                .serve_connection(
+                    io,
+                    service_fn(move |req| handle_request(req, req_app_handle.clone())),
+                )
+                .await
+            {
+                println!("Error serving connection: {:?}", err);
+            }
+        });
+    }
+    Ok(())
+}
+
 async fn handle_request(
-    req: Request<Incoming>,
+    request: Request<Incoming>,
     app_handle: Arc<AppHandle>,
 ) -> Result<Response<Full<Bytes>>, Error> {
-    let path = req.uri().path().to_string();
+    let path = request.uri().path().to_string();
 
-    match (req.method().as_str(), path.as_str()) {
+    match (request.method().as_str(), path.as_str()) {
         ("GET", "/remote_ui") => {
             let app = app_handle.state::<Arc<RwLock<RemoteUi>>>();
             let remote_ui_config = app.read().await.rpc_server.remote_ui_config.clone();
@@ -74,14 +105,15 @@ async fn handle_request(
         }
 
         ("GET", "/remote_ui_ws") => {
-            if hyper_tungstenite::is_upgrade_request(&req) {
-                println!("WS Upgrade");
-                match hyper_tungstenite::upgrade(req, None) {
+            if hyper_tungstenite::is_upgrade_request(&request) {
+                match hyper_tungstenite::upgrade(request, None) {
                     Ok((response, websocket)) => {
-                        println!("WS Upgradeed");
                         let state = Arc::clone(&app_handle);
-                        serve_websocket(websocket, state).await.unwrap();
-                        println!("Am I is here ??");
+                        tokio::spawn(async move {
+                            if let Err(e) = serve_websocket(websocket, state).await {
+                                println!("WebSocket error: {:?}", e);
+                            }
+                        });
                         Ok(response)
                     }
                     Err(e) => {
@@ -93,7 +125,7 @@ async fn handle_request(
                     }
                 }
             } else {
-                println!("WS Not Upgrade");
+                println!("Not WS Upgrade Request");
                 Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .body(Full::new(Bytes::from("Expected WebSocket request")))
@@ -121,30 +153,26 @@ async fn serve_websocket(
     websocket: HyperWebsocket,
     app_handle: Arc<AppHandle>,
 ) -> Result<(), Error> {
-    println!("Its coming till here");
     match websocket.await {
         Ok(ws_stream) => {
-            println!("WS Stream open");
-            tauri::async_runtime::spawn(async move {
-                let (tx, mut rx) = ws_stream.split();
-                let ws_sender = Arc::new(Mutex::new(tx));
-                while let Some(message) = rx.next().await {
-                    match message.unwrap() {
-                        Message::Text(msg) => {
-                            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-                            let socket_handle = ws_sender.clone();
-                            let _ = remote_ui
-                                .read()
-                                .await
-                                .invoke_rpc(msg.to_string(), socket_handle)
-                                .await;
-                        }
-                        _ => {
-                            println!("Unhandled ws data!")
-                        }
+            let (tx, mut rx) = ws_stream.split();
+            let ws_sender = Arc::new(Mutex::new(tx));
+            while let Some(message) = rx.next().await {
+                match message.unwrap() {
+                    Message::Text(msg) => {
+                        let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+                        let socket_handle = ws_sender.clone();
+                        let _ = remote_ui
+                            .read()
+                            .await
+                            .invoke_rpc(msg.to_string(), socket_handle)
+                            .await;
+                    }
+                    _ => {
+                        println!("Unhandled ws data!")
                     }
                 }
-            });
+            }
             Ok(())
         }
         Err(err) => {
@@ -292,38 +320,4 @@ impl RpcServer {
             html, url
         ))
     }
-}
-
-async fn create_hyper_server(
-    origin: &str,
-    port: u16,
-    app_handle: Arc<AppHandle>,
-) -> Result<(), Error> {
-    let listener = TcpListener::bind((origin, port)).await?;
-    // TODO : Update port info into the remoteconfig
-    loop {
-        let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-        if !remote_ui.read().await.rpc_server.get_is_active() {
-            break;
-        }
-        let (stream, _) = listener.accept().await?;
-
-        println!("New Request Handled");
-
-        let io = TokioIo::new(stream);
-        let req_app_handle = app_handle.clone();
-
-        tauri::async_runtime::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(
-                    io,
-                    service_fn(move |req| handle_request(req, req_app_handle.clone())),
-                )
-                .await
-            {
-                println!("Error serving connection: {:?}", err);
-            }
-        });
-    }
-    Ok(())
 }
