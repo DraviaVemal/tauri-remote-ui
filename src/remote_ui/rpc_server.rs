@@ -14,7 +14,7 @@ use hyper::{
 };
 use hyper_tungstenite::{tungstenite::Message, HyperWebsocket, WebSocketStream};
 use hyper_util::rt::TokioIo;
-use std::{collections::HashMap, env, sync::Arc};
+use std::{collections::HashMap, env, future::Future, sync::Arc};
 use tauri::{AppHandle, Error, Manager, Url, WebviewWindow};
 use tokio::{
     net::TcpListener,
@@ -25,21 +25,14 @@ pub trait RemoteUiExt {
     fn start_remote_ui(
         &self,
         remote_ui_config: RemoteUiConfig,
-    ) -> impl futures::Future<Output = std::result::Result<(), tauri::Error>>;
-    fn stop_remote_ui(
-        &self,
-    ) -> impl futures::Future<Output = std::result::Result<(), tauri::Error>>;
+    ) -> impl Future<Output = Result<(), tauri::Error>>;
+    fn stop_remote_ui(&self) -> impl Future<Output = Result<(), tauri::Error>>;
 }
 
 impl RemoteUiExt for AppHandle {
     async fn start_remote_ui(&self, remote_ui_config: RemoteUiConfig) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        remote_ui
-            .write()
-            .await
-            .rpc_server
-            .start(remote_ui_config)
-            .unwrap();
+        remote_ui.write().await.rpc_server.start(remote_ui_config)?;
         Ok(())
     }
 
@@ -108,7 +101,9 @@ async fn handle_request(
             let response = Response::builder()
                 .header("Content-Type", "text/html; charset=UTF-8".to_owned())
                 .body(Full::new(Bytes::from(info_html)))
-                .unwrap();
+                .map_err(|err| {
+                    Error::AssetNotFound(format!("Failed to Load Info Page. Err:{err}"))
+                })?;
             Ok(response)
         }
         ("GET", "/remote_ui_disconnect") => {
@@ -116,7 +111,9 @@ async fn handle_request(
             let response = Response::builder()
                 .header("Content-Type", "text/html; charset=UTF-8".to_owned())
                 .body(Full::new(Bytes::from(redirect_html)))
-                .unwrap();
+                .map_err(|err| {
+                    Error::AssetNotFound(format!("Failed to Load Disconnect Page. Err:{err}"))
+                })?;
             Ok(response)
         }
         ("GET", "/remote_ui_ws") => {
@@ -169,24 +166,30 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                 let mut remote_ui_mut = remote_ui.write().await;
                 if let Some(exitin_handle) = remote_ui_mut.rpc_server.get_ws_handle("main") {
                     // Close connection of existing window
-                    exitin_handle.lock().await.close().await.unwrap();
+                    if let Err(err) = exitin_handle.lock().await.close().await {
+                        eprintln!("Failed to close Socket Connection. Err: {err}");
+                    };
                 }
                 // Replace overwrite existing handle to maintain reliability on one window like desktop
                 remote_ui_mut
                     .rpc_server
                     .set_ws_handle("main", ws_sender.clone());
             }
-            while let Some(message) = rx.next().await {
-                match message.unwrap() {
-                    Message::Text(msg) => {
-                        let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-                        let remote_ui_mut = remote_ui.read().await;
-                        remote_ui_mut
-                            .invoke_rpc(msg.to_string(), ws_sender.clone())
-                            .unwrap();
-                    }
-                    _ => {
-                        println!("Unhandled ws data!")
+            while let Some(message_stream) = rx.next().await {
+                match message_stream {
+                    Ok(message) => match message {
+                        Message::Text(msg) => {
+                            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+                            let remote_ui_mut = remote_ui.read().await;
+                            remote_ui_mut.invoke_rpc(msg.to_string(), ws_sender.clone())?;
+                        }
+                        Message::Close(_) => {}
+                        _ => {
+                            println!("Unhandled ws data!")
+                        }
+                    },
+                    Err(err) => {
+                        eprintln!("Message read Failed. Err:{err}")
                     }
                 }
             }
@@ -282,8 +285,11 @@ impl RpcServer {
     pub(crate) fn stop(&mut self) {
         if self.is_active {
             self.is_active = false;
-            let window = self.app.get_webview_window("main").unwrap();
-            window.reload().unwrap();
+            if let Some(window) = self.app.get_webview_window("main") {
+                if let Err(err) = window.reload() {
+                    eprintln!("Failed to reload webview window. Err:{err}");
+                }
+            }
         }
     }
 
@@ -306,7 +312,9 @@ impl RpcServer {
         let port = self.remote_ui_config.get_port().unwrap_or_default();
         self.is_active = true;
         tauri::async_runtime::spawn(async move {
-            create_hyper_server(origin, port, app_handle).await.unwrap();
+            if let Err(err) = create_hyper_server(origin, port, app_handle).await {
+                eprintln!("Failed to create hyper Server for Remote UI plugin. Err:{err}");
+            }
         });
         let window = self.app.get_webview_window("main").unwrap();
         let current_url = window.url().unwrap();
@@ -314,8 +322,7 @@ impl RpcServer {
         let host = parsed.domain().unwrap();
         let scheme = parsed.scheme();
         let new_url = format!("{}://{}:{}", scheme, host, port);
-        self.activate_remote_ui_mode(&window, &new_url, &self.remote_ui_config.custom_blocking_ui)
-            .unwrap();
+        self.activate_remote_ui_mode(&window, &new_url, &self.remote_ui_config.custom_blocking_ui)?;
         Ok(())
     }
 

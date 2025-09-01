@@ -4,17 +4,19 @@
 
 use crate::RemoteUi;
 use serde::Serialize;
-use std::sync::Arc;
-use tauri::{
-    async_runtime::block_on, Emitter, Error, EventTarget, Manager, Runtime, WebviewWindow,
-};
+use std::{future::Future, sync::Arc};
+use tauri::{Emitter, Error, EventTarget, Manager, Runtime, WebviewWindow};
 use tokio::sync::RwLock;
 
 pub trait EmitterExt<R>
 where
     R: Runtime,
 {
-    fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error>;
+    fn emit<S: Serialize + Clone>(
+        &self,
+        event: &str,
+        payload: S,
+    ) -> impl Future<Output = Result<(), Error>>;
     fn emit_to<I, S>(&self, target: I, event: &str, payload: S) -> Result<(), Error>
     where
         I: Into<EventTarget>,
@@ -37,15 +39,13 @@ where
     R: Runtime,
 {
     /// "tauri-remote-ui" plugin controls switch between WS or IPC
-    fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
+    async fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        block_on(async {
-            if remote_ui.read().await.is_rpc_active() {
-                remote_ui.read().await.emit(event, payload)
-            } else {
-                Emitter::emit(self, event, payload)
-            }
-        })
+        if remote_ui.read().await.is_rpc_active() {
+            remote_ui.read().await.emit(event, payload)
+        } else {
+            Emitter::emit(self, event, payload)
+        }
     }
 
     /// This method still use Tauri Yet to be supported in "tauri-remote-ui" plugin

@@ -44,7 +44,10 @@ impl RemoteUi {
         session: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
     ) -> Result<(), Error> {
         let ws_payload: WsPayload = serde_json::from_str(&payload)?;
-        let window = self.app.get_webview_window("main").unwrap();
+        let window = self
+            .app
+            .get_webview_window("main")
+            .ok_or(Error::AssetNotFound("WebviewWindow Not Found".to_owned()))?;
         let req_unique_id = format!("remote-ui::result::{}", &ws_payload.id);
         self.app
             .app_handle()
@@ -53,14 +56,16 @@ impl RemoteUi {
                 let payload = handler.payload().to_string();
                 let id = ws_payload.id;
                 tauri::async_runtime::spawn(async move {
-                    let _ = session
+                    if let Err(err) = session
                         .lock()
                         .await
                         .send(Message::text(
                             json!({"id":id,"payload":payload}).to_string(),
                         ))
                         .await
-                        .unwrap();
+                    {
+                        eprintln!("WS Send Message Failed. Err:{err}");
+                    }
                 });
             });
         let js = format!(
