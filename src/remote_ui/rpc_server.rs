@@ -217,32 +217,57 @@ async fn handle_request(
     let path = request.uri().path().to_string();
     match (request.method().as_str(), path.as_str()) {
         ("GET", "/remote_ui_info") => {
-            let app = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-            let remote_ui_config = app.read().await.rpc_server.remote_ui_config.clone();
-            let info_html = include_str!("information.html")
-                .replace(
-                    "%ORIGIN_SCOPE%",
-                    remote_ui_config.get_allowed_origin().into(),
-                )
-                .replace(
-                    "%PORT%",
-                    &remote_ui_config.get_port().unwrap_or_default().to_string(),
-                )
-                .replace("%PLUGIN_VERSION%", env!("CARGO_PKG_VERSION"))
-                .replace(
-                    "%APP_VESION%",
-                    &app_handle.package_info().version.to_string(),
-                );
-            let response = Response::builder()
-                .header("Content-Type", "text/html; charset=UTF-8".to_owned())
-                .body(Full::new(Bytes::from(info_html)))
-                .map_err(|err| {
-                    Error::AssetNotFound(format!("Failed to Load Info Page. Err:{err}"))
-                })?;
-            Ok(response)
+            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+            if !remote_ui
+                .read()
+                .await
+                .rpc_server
+                .remote_ui_config
+                .enable_info_url
+            {
+                not_found()
+                    .map_err(|err| Error::AssetNotFound(format!("File serving failed. {:?}", err)))
+            } else {
+                let app = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+                let remote_ui_config = app.read().await.rpc_server.remote_ui_config.clone();
+                let info_html = include_str!("information.html")
+                    .replace(
+                        "%ORIGIN_SCOPE%",
+                        remote_ui_config.get_allowed_origin().into(),
+                    )
+                    .replace(
+                        "%PORT%",
+                        &remote_ui_config.get_port().unwrap_or_default().to_string(),
+                    )
+                    .replace("%PLUGIN_VERSION%", env!("CARGO_PKG_VERSION"))
+                    .replace(
+                        "%APP_VESION%",
+                        &app_handle.package_info().version.to_string(),
+                    );
+                let response = Response::builder()
+                    .header("Content-Type", "text/html; charset=UTF-8".to_owned())
+                    .body(Full::new(Bytes::from(info_html)))
+                    .map_err(|err| {
+                        Error::AssetNotFound(format!("Failed to Load Info Page. Err:{err}"))
+                    })?;
+                Ok(response)
+            }
         }
         ("GET", "/remote_ui_disconnect") => {
-            let redirect_html = include_str!("redirect.html");
+            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+            let redirect_html = if let Some(redirect_html) = remote_ui
+                .read()
+                .await
+                .rpc_server
+                .remote_ui_config
+                .custom_disconnect_ui
+                .as_ref()
+            {
+                redirect_html.to_string()
+            } else {
+                include_str!("redirect.html").to_string()
+            };
+
             let response = Response::builder()
                 .header("Content-Type", "text/html; charset=UTF-8".to_owned())
                 .body(Full::new(Bytes::from(redirect_html)))
