@@ -137,9 +137,3 @@ impl From<&str> for RpcResponseStatus {
         }
     }
 }
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct RpcResult {
-    pub(crate) status: RpcResponseStatus,
-    pub(crate) data: Value,
-}

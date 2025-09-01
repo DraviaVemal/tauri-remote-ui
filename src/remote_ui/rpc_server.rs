@@ -43,6 +43,141 @@ impl RemoteUiExt for AppHandle {
     }
 }
 
+type WindowLabel = String;
+#[derive(Debug, Clone)]
+pub struct RpcServer {
+    pub(crate) app: Arc<AppHandle>,
+    is_active: bool,
+    remote_ui_config: RemoteUiConfig,
+    ws_window_handle: HashMap<
+        WindowLabel,
+        Arc<
+            Mutex<
+                futures::stream::SplitSink<
+                    hyper_tungstenite::WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>,
+                    Message,
+                >,
+            >,
+        >,
+    >,
+}
+
+impl RpcServer {
+    pub(crate) fn get_is_active(&self) -> bool {
+        self.is_active
+    }
+
+    pub(crate) fn new(app: Arc<AppHandle>) -> Self {
+        Self {
+            app,
+            is_active: false,
+            remote_ui_config: RemoteUiConfig::default(),
+            ws_window_handle: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn start(&mut self, remote_ui_config: RemoteUiConfig) -> Result<(), Error> {
+        if self.is_active {
+            Err(Error::IllegalEventName("Server Already Running".to_owned()))
+        } else {
+            self.remote_ui_config = remote_ui_config.clone();
+            self.spawn_http_server()
+        }
+    }
+
+    pub(crate) fn stop(&mut self) {
+        if self.is_active {
+            self.is_active = false;
+            if let Some(window) = self.app.get_webview_window("main") {
+                if let Err(err) = window.reload() {
+                    eprintln!("Failed to reload webview window. Err:{err}");
+                }
+            }
+        }
+    }
+
+    /// Spawns the Actix HTTP server inside tokio task of tauri
+    pub(crate) fn spawn_http_server(&mut self) -> Result<(), Error> {
+        let origin: &str = self.remote_ui_config.get_allowed_origin().into();
+        let dist_path = if let Some(frontend_path) = self.app.config().build.frontend_dist.as_ref()
+        {
+            if Url::parse(&frontend_path.to_string()).is_ok() {
+                return Err(Error::UnknownPath);
+            } else {
+                frontend_path.to_string()
+            }
+        } else {
+            "../dist".to_owned()
+        };
+        let static_path = self.remote_ui_config.get_bundle_path().unwrap_or(dist_path);
+        self.remote_ui_config.bundle_path = Some(static_path.clone());
+        let app_handle = self.app.clone();
+        let port = self.remote_ui_config.get_port().unwrap_or_default();
+        self.is_active = true;
+        tauri::async_runtime::spawn(async move {
+            if let Err(err) = create_hyper_server(origin, port, app_handle).await {
+                eprintln!("Failed to create hyper Server for Remote UI plugin. Err:{err}");
+            }
+        });
+        let window = self.app.get_webview_window("main").unwrap();
+        let current_url = window.url().unwrap();
+        let parsed = Url::parse(current_url.as_str()).unwrap();
+        let host = parsed.domain().unwrap();
+        let scheme = parsed.scheme();
+        let new_url = format!("{}://{}:{}", scheme, host, port);
+        self.activate_remote_ui_mode(&window, &new_url, &self.remote_ui_config.custom_blocking_ui)?;
+        Ok(())
+    }
+
+    pub(crate) fn activate_remote_ui_mode(
+        &self,
+        window: &WebviewWindow,
+        url: &str,
+        custom_html: &Option<String>,
+    ) -> Result<(), Error> {
+        let html = if let Some(custom_html) = custom_html {
+            custom_html
+        } else {
+            &include_str!("default.html")
+                .replace("%URL%", url)
+                .replace("%URL_INFO%", &format!("{}/remote_ui_info", url))
+        };
+        // Save current URL and replace DOM content with HTML string
+        window.eval(&format!(
+            r#"(function() {{
+            // Replace entire body content with our HTML
+            document.body.innerHTML = `{}`;
+            
+            // Apply styles to html/body to ensure full coverage
+            document.body.style.margin = '0';
+            document.body.style.padding = '0';
+            document.documentElement.style.height = '100%';
+            document.body.style.height = '100%';
+            
+            console.info("Remote UI Plugin Activated");
+            console.info("Remote UI active at: {}")
+        }})();"#,
+            html, url
+        ))
+    }
+
+    pub(crate) fn set_ws_handle(
+        &mut self,
+        window_label: &str,
+        ws_handle: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
+    ) -> () {
+        self.ws_window_handle
+            .insert(window_label.to_owned(), ws_handle);
+    }
+
+    pub(crate) fn get_ws_handle(
+        &self,
+        window_label: &str,
+    ) -> Option<&Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>> {
+        self.ws_window_handle.get(window_label)
+    }
+}
+
 async fn create_hyper_server(
     origin: &str,
     port: u16,
@@ -148,12 +283,6 @@ async fn handle_request(
     }
 }
 
-fn not_found() -> Result<Response<Full<Bytes>>, tauri::http::Error> {
-    Response::builder()
-        .status(StatusCode::NOT_FOUND)
-        .body(Full::new(Bytes::from("Not Found!")))
-}
-
 /// Handle a websocket connection.
 async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Result<(), Error> {
     match websocket.await {
@@ -219,7 +348,9 @@ async fn wildcard_get_handler(
         let remote_state = app_handle.state::<Arc<RwLock<RemoteUi>>>();
         let remote_ui = remote_state.read().await;
         if let Some(static_path) = remote_ui.rpc_server.remote_ui_config.bundle_path.as_ref() {
-            let file_path = format!("{}/{}", static_path, file_path);
+            let file_path = urlencoding::decode(&format!("{}/{}", static_path, file_path))
+                .unwrap_or_default()
+                .to_string();
             if let Ok(bytes) = std::fs::read(&file_path) {
                 let content_type = mime_guess::from_path(&file_path).first_or_octet_stream();
                 return Response::builder()
@@ -240,137 +371,8 @@ async fn wildcard_get_handler(
     not_found()
 }
 
-type WindowLabel = String;
-#[derive(Debug, Clone)]
-pub struct RpcServer {
-    pub(crate) app: Arc<AppHandle>,
-    is_active: bool,
-    remote_ui_config: RemoteUiConfig,
-    ws_window_handle: HashMap<
-        WindowLabel,
-        Arc<
-            Mutex<
-                futures::stream::SplitSink<
-                    hyper_tungstenite::WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>,
-                    Message,
-                >,
-            >,
-        >,
-    >,
-}
-
-impl RpcServer {
-    pub(crate) fn get_is_active(&self) -> bool {
-        self.is_active
-    }
-
-    pub(crate) fn new(app: Arc<AppHandle>) -> Self {
-        Self {
-            app,
-            is_active: false,
-            remote_ui_config: RemoteUiConfig::default(),
-            ws_window_handle: HashMap::new(),
-        }
-    }
-
-    pub(crate) fn start(&mut self, remote_ui_config: RemoteUiConfig) -> Result<(), Error> {
-        if self.is_active {
-            Err(Error::IllegalEventName("Server Already Running".to_owned()))
-        } else {
-            self.remote_ui_config = remote_ui_config.clone();
-            self.spawn_http_server()
-        }
-    }
-
-    pub(crate) fn stop(&mut self) {
-        if self.is_active {
-            self.is_active = false;
-            if let Some(window) = self.app.get_webview_window("main") {
-                if let Err(err) = window.reload() {
-                    eprintln!("Failed to reload webview window. Err:{err}");
-                }
-            }
-        }
-    }
-
-    /// Spawns the Actix HTTP server inside tokio task of tauri
-    fn spawn_http_server(&mut self) -> Result<(), Error> {
-        let origin: &str = self.remote_ui_config.get_allowed_origin().into();
-        let dist_path = if let Some(frontend_path) = self.app.config().build.frontend_dist.as_ref()
-        {
-            if Url::parse(&frontend_path.to_string()).is_ok() {
-                return Err(Error::UnknownPath);
-            } else {
-                frontend_path.to_string()
-            }
-        } else {
-            "../dist".to_owned()
-        };
-        let static_path = self.remote_ui_config.get_bundle_path().unwrap_or(dist_path);
-        self.remote_ui_config.bundle_path = Some(static_path.clone());
-        let app_handle = self.app.clone();
-        let port = self.remote_ui_config.get_port().unwrap_or_default();
-        self.is_active = true;
-        tauri::async_runtime::spawn(async move {
-            if let Err(err) = create_hyper_server(origin, port, app_handle).await {
-                eprintln!("Failed to create hyper Server for Remote UI plugin. Err:{err}");
-            }
-        });
-        let window = self.app.get_webview_window("main").unwrap();
-        let current_url = window.url().unwrap();
-        let parsed = Url::parse(current_url.as_str()).unwrap();
-        let host = parsed.domain().unwrap();
-        let scheme = parsed.scheme();
-        let new_url = format!("{}://{}:{}", scheme, host, port);
-        self.activate_remote_ui_mode(&window, &new_url, &self.remote_ui_config.custom_blocking_ui)?;
-        Ok(())
-    }
-
-    pub(crate) fn activate_remote_ui_mode(
-        &self,
-        window: &WebviewWindow,
-        url: &str,
-        custom_html: &Option<String>,
-    ) -> Result<(), Error> {
-        let html = if let Some(custom_html) = custom_html {
-            custom_html
-        } else {
-            &include_str!("default.html")
-                .replace("%URL%", url)
-                .replace("%URL_INFO%", &format!("{}/remote_ui_info", url))
-        };
-        // Save current URL and replace DOM content with HTML string
-        window.eval(&format!(
-            r#"(function() {{
-            // Replace entire body content with our HTML
-            document.body.innerHTML = `{}`;
-            
-            // Apply styles to html/body to ensure full coverage
-            document.body.style.margin = '0';
-            document.body.style.padding = '0';
-            document.documentElement.style.height = '100%';
-            document.body.style.height = '100%';
-            
-            console.info("Remote UI Plugin Activated");
-            console.info("Remote UI active at: {}")
-        }})();"#,
-            html, url
-        ))
-    }
-
-    fn set_ws_handle(
-        &mut self,
-        window_label: &str,
-        ws_handle: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
-    ) -> () {
-        self.ws_window_handle
-            .insert(window_label.to_owned(), ws_handle);
-    }
-
-    pub(crate) fn get_ws_handle(
-        &self,
-        window_label: &str,
-    ) -> Option<&Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>> {
-        self.ws_window_handle.get(window_label)
-    }
+fn not_found() -> Result<Response<Full<Bytes>>, tauri::http::Error> {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Full::new(Bytes::from("Not Found!")))
 }
