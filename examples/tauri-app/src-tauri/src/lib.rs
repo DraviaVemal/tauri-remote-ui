@@ -28,7 +28,7 @@ fn exit_app(app: AppHandle) {
 }
 
 #[tauri::command]
-fn increment(app: AppHandle) {
+async fn increment(app: AppHandle) {
     app.state::<Arc<RwLock<Counter>>>().write().unwrap().now += 1;
     let counter = app.state::<Arc<RwLock<Counter>>>().read().unwrap().now;
     app.get_webview_window("main")
@@ -39,11 +39,12 @@ fn increment(app: AppHandle) {
             "result":counter
             }),
         )
+        .await
         .unwrap();
 }
 
 #[tauri::command]
-fn decrement(app: AppHandle) {
+async fn decrement(app: AppHandle) {
     app.state::<Arc<RwLock<Counter>>>().write().unwrap().now -= 1;
     let counter = app.state::<Arc<RwLock<Counter>>>().read().unwrap().now;
     app.get_webview_window("main")
@@ -54,6 +55,7 @@ fn decrement(app: AppHandle) {
             "result":counter
             }),
         )
+        .await
         .unwrap();
 }
 
