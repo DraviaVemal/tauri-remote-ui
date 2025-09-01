@@ -15,28 +15,37 @@ use hyper::{
 use hyper_tungstenite::{tungstenite::Message, HyperWebsocket, WebSocketStream};
 use hyper_util::rt::TokioIo;
 use std::{collections::HashMap, env, sync::Arc};
-use tauri::{async_runtime::block_on, AppHandle, Error, Manager, Url, WebviewWindow};
+use tauri::{AppHandle, Error, Manager, Url, WebviewWindow};
 use tokio::{
     net::TcpListener,
     sync::{Mutex, RwLock},
 };
 
 pub trait RemoteUiExt {
-    fn start_remote_ui(&self, remote_ui_config: RemoteUiConfig) -> Result<(), Error>;
-    fn stop_remote_ui(&self) -> Result<(), Error>;
+    fn start_remote_ui(
+        &self,
+        remote_ui_config: RemoteUiConfig,
+    ) -> impl futures::Future<Output = std::result::Result<(), tauri::Error>>;
+    fn stop_remote_ui(
+        &self,
+    ) -> impl futures::Future<Output = std::result::Result<(), tauri::Error>>;
 }
 
 impl RemoteUiExt for AppHandle {
-    fn start_remote_ui(&self, remote_ui_config: RemoteUiConfig) -> Result<(), Error> {
+    async fn start_remote_ui(&self, remote_ui_config: RemoteUiConfig) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        block_on(async { remote_ui.write().await.rpc_server.start(remote_ui_config) })
+        remote_ui
+            .write()
+            .await
+            .rpc_server
+            .start(remote_ui_config)
+            .unwrap();
+        Ok(())
     }
 
-    fn stop_remote_ui(&self) -> Result<(), Error> {
+    async fn stop_remote_ui(&self) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        block_on(async {
-            remote_ui.write().await.rpc_server.stop();
-        });
+        remote_ui.write().await.rpc_server.stop();
         Ok(())
     }
 }

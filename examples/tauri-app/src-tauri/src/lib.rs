@@ -4,16 +4,19 @@ use tauri::{AppHandle, Manager};
 use tauri_remote_ui::{EmitterExt, RemoteUiConfig, RemoteUiExt};
 
 #[tauri::command]
-fn enable_server(app: AppHandle) -> String {
-    match app.start_remote_ui(RemoteUiConfig::default().set_port(Some(9090))) {
+async fn enable_server(app: AppHandle) -> String {
+    match app
+        .start_remote_ui(RemoteUiConfig::default().set_port(Some(9090)))
+        .await
+    {
         Ok(()) => format!("Server Started."),
         Err(err) => format!("Server Error {:?}", err),
     }
 }
 
 #[tauri::command]
-fn disable_server(app: AppHandle) -> String {
-    match app.stop_remote_ui() {
+async fn disable_server(app: AppHandle) -> String {
+    match app.stop_remote_ui().await {
         Ok(()) => format!("Server Stoped"),
         Err(err) => format!("Server Error {:?}", err),
     }
@@ -58,7 +61,6 @@ pub struct Counter {
     pub now: i32,
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_remote_ui::init())
