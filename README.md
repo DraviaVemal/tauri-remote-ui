@@ -2,6 +2,10 @@
 
 **Tauri Remote UI** is a plugin that allows you to expose your Tauri application's UI to any web browser, enabling seamless remote interaction for development and end-to-end testing. The plugin bridges your native app and commercial browsers, letting you use standard web automation tools for testing and debugging—without modifying your app's logic.
 
+## Badges
+![Crates.io Version](https://img.shields.io/crates/v/tauri-remote-ui?style=flat&label=crates.io%20%3A%20tauri-remote-ui) ![NPM Version](https://img.shields.io/npm/v/tauri-remote-ui?label=npm%20%3A%20tauri-remote-ui)
+
+
 ## Features
 
 - **Remote UI Exposure:** Interact with your Tauri app from any browser.
@@ -9,7 +13,6 @@
 - **Seamless E2E Testing:** Use existing web automation/testing tools.
 - **Automatic Transport Switching:** IPC for WebView, WebSocket for browsers—handled transparently.
 - **Customizable Security:** Control and secure remote access as needed.
-- TODO - **Zero App Changes:** No additional changes required to your app after plugin setup.
 - **Future Compatibility For Test Migration:** When [CEF-RS](https://github.com/cef-rs/cef) becomes available, the same E2E tests (e.g., written with Playwright or similar tools that use the Chromium debug port) will work seamlessly in debug mode, ensuring long-term support for modern testing workflows.
 
 ## Completed Features
