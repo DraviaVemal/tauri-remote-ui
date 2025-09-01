@@ -3,7 +3,7 @@
 // See LICENSE file in the root directory.
 
 use crate::{RpcServer, WsPayload};
-use futures_util::{stream::SplitSink, SinkExt};
+use futures::{stream::SplitSink, SinkExt};
 use hyper::upgrade::Upgraded;
 use hyper_tungstenite::{tungstenite::Message, WebSocketStream};
 use hyper_util::rt::TokioIo;
@@ -38,7 +38,7 @@ impl RemoteUi {
         self.rpc_server.get_is_active()
     }
 
-    pub(crate) async fn invoke_rpc(
+    pub(crate) fn invoke_rpc(
         &self,
         payload: String,
         session: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
@@ -97,15 +97,22 @@ impl RemoteUi {
 
     /// Emit message to target window to listen
     pub fn emit<P: Serialize + Clone>(&self, event: &str, payload: P) -> Result<(), Error> {
-        // if let Some(session) = self.rpc_server.window_connections.get("main") {
-        //     let mut send = session.clone();
-        //     let json = json!({
-        //         "event":event,
-        //         "payload":payload
-        //     })
-        //     .to_string();
-        //     tauri::async_runtime::spawn(async move { send.text(json).await.unwrap() });
-        // }
+        if let Some(session) = self.rpc_server.get_ws_handle("main") {
+            let ws_handle = session.clone();
+            let json = json!({
+                "event":event,
+                "payload":payload
+            })
+            .to_string();
+            tauri::async_runtime::spawn(async move {
+                ws_handle
+                    .lock()
+                    .await
+                    .send(Message::text(json))
+                    .await
+                    .unwrap()
+            });
+        }
         Ok(())
     }
 }

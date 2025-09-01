@@ -3,18 +3,18 @@
 // See LICENSE file in the root directory.
 
 use crate::{models::*, RemoteUi};
-use futures_util::StreamExt;
+use futures::{stream::SplitSink, SinkExt, StreamExt};
 use http_body_util::Full;
 use hyper::{
     body::{Bytes, Incoming},
     server::conn::http1,
     service::service_fn,
+    upgrade::Upgraded,
     Request, Response, StatusCode,
 };
-use hyper_tungstenite::{tungstenite::Message, HyperWebsocket};
+use hyper_tungstenite::{tungstenite::Message, HyperWebsocket, WebSocketStream};
 use hyper_util::rt::TokioIo;
-use serde_json::{json, Value};
-use std::{env, sync::Arc};
+use std::{collections::HashMap, env, sync::Arc};
 use tauri::{async_runtime::block_on, AppHandle, Error, Manager, Url, WebviewWindow};
 use tokio::{
     net::TcpListener,
@@ -29,7 +29,6 @@ pub trait RemoteUiExt {
 impl RemoteUiExt for AppHandle {
     fn start_remote_ui(&self, remote_ui_config: RemoteUiConfig) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        println!("Server Start");
         block_on(async { remote_ui.write().await.rpc_server.start(remote_ui_config) })
     }
 
@@ -38,7 +37,6 @@ impl RemoteUiExt for AppHandle {
         block_on(async {
             remote_ui.write().await.rpc_server.stop();
         });
-        println!("Server Stop");
         Ok(())
     }
 }
@@ -65,6 +63,7 @@ async fn create_hyper_server(
                     io,
                     service_fn(move |req| handle_request(req, req_app_handle.clone())),
                 )
+                .with_upgrades()
                 .await
             {
                 println!("Error serving connection: {:?}", err);
@@ -80,27 +79,36 @@ async fn handle_request(
 ) -> Result<Response<Full<Bytes>>, Error> {
     let path = request.uri().path().to_string();
     match (request.method().as_str(), path.as_str()) {
-        ("GET", "/remote_ui") => {
+        ("GET", "/remote_ui_info") => {
             let app = app_handle.state::<Arc<RwLock<RemoteUi>>>();
             let remote_ui_config = app.read().await.rpc_server.remote_ui_config.clone();
-            let mut value = serde_json::to_value(&remote_ui_config).unwrap();
-            if let Value::Object(ref mut map) = value {
-                map.insert("Plugin".to_string(), json!("tauri-remote-ui"));
-                map.insert(
-                    "Status".to_string(),
-                    json!("This Window is Dis-Connected as another one opened"),
+            let info_html = include_str!("information.html")
+                .replace(
+                    "%ORIGIN_SCOPE%",
+                    remote_ui_config.get_allowed_origin().into(),
+                )
+                .replace(
+                    "%PORT%",
+                    &remote_ui_config.get_port().unwrap_or_default().to_string(),
+                )
+                .replace("%PLUGIN_VERSION%", env!("CARGO_PKG_VERSION"))
+                .replace(
+                    "%APP_VESION%",
+                    &app_handle.package_info().version.to_string(),
                 );
-                // Get Tauri app version
-                let app_version = app_handle.package_info().version.to_string();
-                map.insert("app_version".to_string(), json!(app_version));
-                // Get plugin version from Cargo.toml env var if set at build time
-                map.insert(
-                    "plugin_version".to_string(),
-                    json!(env!("CARGO_PKG_VERSION")),
-                );
-            }
-            let resp = serde_json::to_string(&value)?;
-            Ok(Response::new(Full::new(Bytes::from(resp))))
+            let response = Response::builder()
+                .header("Content-Type", "text/html; charset=UTF-8".to_owned())
+                .body(Full::new(Bytes::from(info_html)))
+                .unwrap();
+            Ok(response)
+        }
+        ("GET", "/remote_ui_disconnect") => {
+            let redirect_html = include_str!("redirect.html");
+            let response = Response::builder()
+                .header("Content-Type", "text/html; charset=UTF-8".to_owned())
+                .body(Full::new(Bytes::from(redirect_html)))
+                .unwrap();
+            Ok(response)
         }
         ("GET", "/remote_ui_ws") => {
             if hyper_tungstenite::is_upgrade_request(&request) {
@@ -146,16 +154,27 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
         Ok(ws_stream) => {
             let (tx, mut rx) = ws_stream.split();
             let ws_sender = Arc::new(Mutex::new(tx));
+            // Internal Closer to handle RemoteUI Lock handling
+            {
+                let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+                let mut remote_ui_mut = remote_ui.write().await;
+                if let Some(exitin_handle) = remote_ui_mut.rpc_server.get_ws_handle("main") {
+                    // Close connection of existing window
+                    exitin_handle.lock().await.close().await.unwrap();
+                }
+                // Replace overwrite existing handle to maintain reliability on one window like desktop
+                remote_ui_mut
+                    .rpc_server
+                    .set_ws_handle("main", ws_sender.clone());
+            }
             while let Some(message) = rx.next().await {
                 match message.unwrap() {
                     Message::Text(msg) => {
                         let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-                        let socket_handle = ws_sender.clone();
-                        let _ = remote_ui
-                            .read()
-                            .await
-                            .invoke_rpc(msg.to_string(), socket_handle)
-                            .await;
+                        let remote_ui_mut = remote_ui.read().await;
+                        remote_ui_mut
+                            .invoke_rpc(msg.to_string(), ws_sender.clone())
+                            .unwrap();
                     }
                     _ => {
                         println!("Unhandled ws data!")
@@ -209,11 +228,23 @@ async fn wildcard_get_handler(
     not_found()
 }
 
+type WindowLabel = String;
 #[derive(Debug, Clone)]
 pub struct RpcServer {
     pub(crate) app: Arc<AppHandle>,
     is_active: bool,
     remote_ui_config: RemoteUiConfig,
+    ws_window_handle: HashMap<
+        WindowLabel,
+        Arc<
+            Mutex<
+                futures::stream::SplitSink<
+                    hyper_tungstenite::WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>,
+                    Message,
+                >,
+            >,
+        >,
+    >,
 }
 
 impl RpcServer {
@@ -226,6 +257,7 @@ impl RpcServer {
             app,
             is_active: false,
             remote_ui_config: RemoteUiConfig::default(),
+            ws_window_handle: HashMap::new(),
         }
     }
 
@@ -278,7 +310,7 @@ impl RpcServer {
         Ok(())
     }
 
-    pub fn activate_remote_ui_mode(
+    pub(crate) fn activate_remote_ui_mode(
         &self,
         window: &WebviewWindow,
         url: &str,
@@ -289,7 +321,7 @@ impl RpcServer {
         } else {
             &include_str!("default.html")
                 .replace("%URL%", url)
-                .replace("%URL_INFO%", &format!("{}/remote_ui", url))
+                .replace("%URL_INFO%", &format!("{}/remote_ui_info", url))
         };
         // Save current URL and replace DOM content with HTML string
         window.eval(&format!(
@@ -308,5 +340,21 @@ impl RpcServer {
         }})();"#,
             html, url
         ))
+    }
+
+    fn set_ws_handle(
+        &mut self,
+        window_label: &str,
+        ws_handle: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
+    ) -> () {
+        self.ws_window_handle
+            .insert(window_label.to_owned(), ws_handle);
+    }
+
+    pub(crate) fn get_ws_handle(
+        &self,
+        window_label: &str,
+    ) -> Option<&Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>> {
+        self.ws_window_handle.get(window_label)
     }
 }

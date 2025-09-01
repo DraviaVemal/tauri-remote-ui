@@ -23,7 +23,7 @@ function getWsUrl(): string {
 
 function getUrl(): string {
     const loc = window.location;
-    const wsUrl = `${loc.protocol}//${loc.host}/remote_ui`;
+    const wsUrl = `${loc.protocol}//${loc.host}/remote_ui_disconnect`;
     return wsUrl;
 }
 
