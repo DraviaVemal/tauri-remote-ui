@@ -120,6 +120,9 @@ impl RpcServer {
             }
         });
         let window = self.app.get_webview_window("main").unwrap();
+        if self.remote_ui_config.minimize_app {
+            window.minimize()?;
+        }
         let current_url = window.url().unwrap();
         let parsed = Url::parse(current_url.as_str()).unwrap();
         let host = parsed.domain().unwrap();

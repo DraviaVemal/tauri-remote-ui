@@ -13,7 +13,7 @@
 - **Seamless E2E Testing:** Use existing web automation/testing tools.
 - **Automatic Transport Switching:** IPC for WebView, WebSocket for browsers—handled transparently.
 - **Customizable Security:** Control and secure remote access as needed.
-- **Future Compatibility For Test Migration:** When [CEF-RS](https://github.com/cef-rs/cef) becomes available, the same E2E tests (e.g., written with Playwright or similar tools that use the Chromium debug port) will work seamlessly in debug mode, ensuring long-term support for modern testing workflows.
+- **Future Compatibility For Test Migration:** When [CEF-RS](https://github.com/tauri-apps/cef-rs) becomes available, the same E2E tests (e.g., written with Playwright or similar tools that use the Chromium debug port) will work seamlessly in debug mode, ensuring long-term support for modern testing workflows.
 
 ## Completed Features
 
