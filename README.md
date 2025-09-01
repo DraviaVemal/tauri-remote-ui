@@ -16,7 +16,11 @@
 ### Javascript
 - **api/core** - `invoke`
 - **api/event** - `listen`
-- **api/app** - `defaultWindowIcon`,`fetchDataStoreIdentifiers`,`getBundleType`,`getIdentifier`,`getName`,`getTauriVersion`,`getVersion`,`hide`,`removeDataStore`,`setDockVisibility`,`setTheme`,`show`
+- **api/app**
+  - `defaultWindowIcon`,`fetchDataStoreIdentifiers`,`getBundleType`,
+  - `getIdentifier`,`getName`,`getTauriVersion`,
+  - `getVersion`,`hide`,`removeDataStore`,
+  - `setDockVisibility`,`setTheme`,`show`
 
 ### Rust
 - `emit` - Emit method is updated to handle in this plugin.
