@@ -58,22 +58,24 @@ pub fn run() {
 ```
 3. **Replace Emitter trait**
 ```rust
-use tauri::Emitter
+use tauri::Emitter;
+webview_window.emit(data)
 ```
 To
 ```rust
 use tauri_remote_ui::EmitterExt;
+webview_window.emit(data).await
 ```
 4. **Start/Stop Server**
 ```rust
-fn enable_server(app: AppHandle) -> String {
-    match app.start_remote_ui(RemoteUiConfig::default().set_port(Some(9090))) {
+async fn enable_server(app: AppHandle) -> String {
+    match app.start_remote_ui(RemoteUiConfig::default().set_port(Some(9090))).await {
         Ok(()) => format!("Server Started."),
         Err(err) => format!("Server Error {:?}", err),
     }
 }
-fn disable_server(app: AppHandle) -> String {
-    match app.stop_remote_ui() {
+async fn disable_server(app: AppHandle) -> String {
+    match app.stop_remote_ui().await {
         Ok(()) => format!("Server Stoped"),
         Err(err) => format!("Server Error {:?}", err),
     }
@@ -90,12 +92,13 @@ To
 import { invoke } from "tauri-remote-ui/api/core";
 import { listen } from "tauri-remote-ui/api/event";
 ```
-3. **Access the UI remotely** via the provided web interface when activated.
+7. **Development WebSocket Proxy** `/remote_ui_ws` proxy remote_ui url ws to your dev server like vite.
+8. **Enable Source Map and update lauch.json setup in vscode to debug frontend**
 
-## Development
+## Plugin Development
 
 - Build Rust: `cargo build`
-- Build JS: `pnpm build`
+- Build JS: `cd guest-js && pnpm build`
 - Example app: See `examples/tauri-app/`
 
 ## License
