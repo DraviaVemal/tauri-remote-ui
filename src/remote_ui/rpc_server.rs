@@ -27,6 +27,7 @@ pub trait RemoteUiExt {
         remote_ui_config: RemoteUiConfig,
     ) -> impl Future<Output = Result<(), tauri::Error>>;
     fn stop_remote_ui(&self) -> impl Future<Output = Result<(), tauri::Error>>;
+    fn is_remote_ui_running(&self) -> impl Future<Output = bool>;
 }
 
 impl RemoteUiExt for AppHandle {
@@ -40,6 +41,12 @@ impl RemoteUiExt for AppHandle {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
         remote_ui.write().await.rpc_server.stop();
         Ok(())
+    }
+
+    async fn is_remote_ui_running(&self) -> bool {
+        let state = self.state::<Arc<RwLock<RemoteUi>>>();
+        let remote_ui = state.read().await;
+        remote_ui.rpc_server.get_is_active()
     }
 }
 
@@ -126,7 +133,11 @@ impl RpcServer {
         let current_url = window.url().unwrap();
         let parsed = Url::parse(current_url.as_str()).unwrap();
         let host = parsed.domain().unwrap();
-        let scheme = parsed.scheme();
+        let scheme = if parsed.scheme() == "https" {
+            "https"
+        } else {
+            "http"
+        };
         let new_url = format!("{}://{}:{}", scheme, host, port);
         self.activate_remote_ui_mode(&window, &new_url, &self.remote_ui_config.custom_blocking_ui)?;
         Ok(())
