@@ -38,14 +38,14 @@ impl<R> EmitterExt<R> for WebviewWindow<R>
 where
     R: Runtime,
 {
-    /// "tauri-remote-ui" plugin controls switch between WS or IPC
+    /// "tauri-remote-ui" plugin WS Extension
     async fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
         if remote_ui.read().await.is_rpc_active() {
-            remote_ui.read().await.emit(event, payload)
-        } else {
-            Emitter::emit(self, event, payload)
+            remote_ui.read().await.emit(event, payload.clone())?;
         }
+        Emitter::emit(self, event, payload)?;
+        Ok(())
     }
 
     /// This method still use Tauri Yet to be supported in "tauri-remote-ui" plugin

@@ -49,6 +49,7 @@ pub struct EmitResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteUiConfig {
+    pub(crate) application_ui: bool,
     pub(crate) allowed_origin: OriginType,
     pub(crate) port: Option<u16>,
     pub(crate) bundle_path: Option<String>,
@@ -61,6 +62,7 @@ pub struct RemoteUiConfig {
 impl Default for RemoteUiConfig {
     fn default() -> Self {
         RemoteUiConfig {
+            application_ui: false,
             allowed_origin: OriginType::Localhost,
             port: None,
             bundle_path: None,
@@ -73,6 +75,11 @@ impl Default for RemoteUiConfig {
 }
 
 impl RemoteUiConfig {
+    /// This enable tauri actual UI and navigate to same path without blocking the actual UI
+    pub fn enable_application_ui(mut self) -> RemoteUiConfig {
+        self.application_ui = true;
+        self
+    }
     /// On server start the actual tauri app will minimize from screen
     pub fn minimize_app(mut self) -> RemoteUiConfig {
         self.minimize_app = true;

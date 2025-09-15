@@ -130,16 +130,22 @@ impl RpcServer {
         if self.remote_ui_config.minimize_app {
             window.minimize()?;
         }
-        let current_url = window.url().unwrap();
-        let parsed = Url::parse(current_url.as_str()).unwrap();
-        let host = parsed.domain().unwrap();
-        let scheme = if parsed.scheme() == "https" {
-            "https"
-        } else {
-            "http"
-        };
-        let new_url = format!("{}://{}:{}", scheme, host, port);
-        self.activate_remote_ui_mode(&window, &new_url, &self.remote_ui_config.custom_blocking_ui)?;
+        if !self.remote_ui_config.application_ui {
+            let current_url = window.url().unwrap();
+            let parsed = Url::parse(current_url.as_str()).unwrap();
+            let host = parsed.domain().unwrap();
+            let scheme = if parsed.scheme() == "https" {
+                "https"
+            } else {
+                "http"
+            };
+            let new_url = format!("{}://{}:{}", scheme, host, port);
+            self.activate_remote_ui_mode(
+                &window,
+                &new_url,
+                &self.remote_ui_config.custom_blocking_ui,
+            )?;
+        }
         Ok(())
     }
 

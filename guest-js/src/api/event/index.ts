@@ -6,6 +6,8 @@
 import { EventCallback, EventName, Options, listen as TauriListen, UnlistenFn } from '@tauri-apps/api/event';
 import { initWebSocket, ws, wsReady } from '../../socket';
 
+export type { UnlistenFn } from '@tauri-apps/api/event';
+
 /**
  * Listen to events from the Tauri application
  * Falls back to WebSocket if Tauri Event API is not available
