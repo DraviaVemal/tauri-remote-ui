@@ -67,7 +67,7 @@ function preparePackageFile() {
   const publishPkg = {
     name: pkg.name,
     license: pkg.license,
-    version: pkg.version,
+    version: process.env.APP_VERSION || pkg.version,
     author: pkg.author,
     description: pkg.description,
     type: pkg.type,
