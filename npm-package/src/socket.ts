@@ -45,17 +45,22 @@ export function initWebSocket(): void {
         console.info("Remote RPC Attempting...");
         const wsUrl = getWsUrl();
         try {
+            let pingPongTimer: NodeJS.Timeout;
             ws = new WebSocket(wsUrl);
             wsReady = new Promise((resolve, reject) => {
                 ws!.onopen = () => {
                     console.info("Remote Connected.");
+                    pingPongTimer = setInterval(() => {
+                        ws?.send("ping");
+                    }, 30000);
                     resolve();
                 };
                 ws!.onclose = () => {
                     ws = null;
                     wsReady = null;
+                    pingPongTimer && clearInterval(pingPongTimer);
                     console.info("Remote Dis-Connected.");
-                    window.location.replace(getUrl());
+                    window.location.href = getUrl();
                 };
                 ws!.onerror = (e) => {
                     reject(e);
@@ -66,9 +71,7 @@ export function initWebSocket(): void {
                 };
             });
         } catch (e) {
-            setTimeout(() => {
-                initWebSocket();
-            }, 5000);
+            console.error(e);
         }
     }
 }
