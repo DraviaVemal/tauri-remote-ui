@@ -26,7 +26,7 @@ where
     Ok(remote_ui)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// Access to the remote-ui APIs.
 pub struct RemoteUi {
     pub(crate) app: Arc<AppHandle>,

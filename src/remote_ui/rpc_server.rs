@@ -15,7 +15,7 @@ use hyper::{
 use hyper_tungstenite::{tungstenite::Message, HyperWebsocket, WebSocketStream};
 use hyper_util::rt::TokioIo;
 use std::{collections::HashMap, env, future::Future, sync::Arc};
-use tauri::{AppHandle, Error, Manager, Url, WebviewWindow};
+use tauri::{async_runtime::JoinHandle, AppHandle, Error, Manager, Url, WebviewWindow};
 use tokio::{
     net::TcpListener,
     sync::{Mutex, RwLock},
@@ -51,7 +51,7 @@ impl RemoteUiExt for AppHandle {
 }
 
 type WindowLabel = String;
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RpcServer {
     pub(crate) app: Arc<AppHandle>,
     is_active: bool,
@@ -67,6 +67,7 @@ pub struct RpcServer {
             >,
         >,
     >,
+    http_server_thread: Option<JoinHandle<()>>,
 }
 
 impl RpcServer {
@@ -80,6 +81,7 @@ impl RpcServer {
             is_active: false,
             remote_ui_config: RemoteUiConfig::default(),
             ws_window_handle: HashMap::new(),
+            http_server_thread: None,
         }
     }
 
@@ -99,6 +101,9 @@ impl RpcServer {
                 if let Err(err) = window.reload() {
                     eprintln!("Failed to reload webview window. Err:{err}");
                 }
+            }
+            if let Some(server_handle) = self.http_server_thread.as_ref() {
+                server_handle.abort();
             }
         }
     }
@@ -121,11 +126,13 @@ impl RpcServer {
         let app_handle = self.app.clone();
         let port = self.remote_ui_config.get_port().unwrap_or_default();
         self.is_active = true;
-        tauri::async_runtime::spawn(async move {
+        // Spawn the HTTP server and store the JoinHandle so we can abort it later
+        let handle = tauri::async_runtime::spawn(async move {
             if let Err(err) = create_hyper_server(origin, port, app_handle).await {
                 eprintln!("Failed to create hyper Server for Remote UI plugin. Err:{err}");
             }
         });
+        self.http_server_thread = Some(handle);
         let window = self.app.get_webview_window("main").unwrap();
         if self.remote_ui_config.minimize_app {
             window.minimize()?;
@@ -352,12 +359,24 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
             while let Some(message_stream) = rx.next().await {
                 match message_stream {
                     Ok(message) => match message {
+                        Message::Ping(_) => {
+                            if let Err(err) = ws_sender
+                                .lock()
+                                .await
+                                .send(Message::Pong("pong".into()))
+                                .await
+                            {
+                                eprintln!("Failed Pong Err:{err}")
+                            }
+                        }
                         Message::Text(msg) => {
                             let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
                             let remote_ui_mut = remote_ui.read().await;
                             remote_ui_mut.invoke_rpc(msg.to_string(), ws_sender.clone())?;
                         }
-                        Message::Close(_) => {}
+                        Message::Close(_) => {
+                            println!("Server Socket Closed")
+                        }
                         _ => {
                             println!("Unhandled ws data!")
                         }
