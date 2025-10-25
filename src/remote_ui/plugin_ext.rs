@@ -91,8 +91,18 @@ impl RemoteUi {
                 }});
             "#,
             ws_payload.cmd,
-            serde_json::to_string(&ws_payload.args).unwrap(),
-            serde_json::to_string(&ws_payload.option).unwrap(),
+            serde_json::to_string(&ws_payload.args).map_err(|err| {
+                Error::PluginInitialization(
+                    "tauri-remote-ui".to_owned(),
+                    format!("Failed to parse message. Err: {err}"),
+                )
+            })?,
+            serde_json::to_string(&ws_payload.option).map_err(|err| {
+                Error::PluginInitialization(
+                    "tauri-remote-ui".to_owned(),
+                    format!("Failed to parse message. Err: {err}"),
+                )
+            })?,
             &req_unique_id,
             &req_unique_id
         );
@@ -101,22 +111,24 @@ impl RemoteUi {
     }
 
     /// Emit message to target window to listen
-    pub fn emit<P: Serialize + Clone>(&self, event: &str, payload: P) -> Result<(), Error> {
+    pub async fn emit<P: Serialize + Clone>(&self, event: &str, payload: P) -> Result<(), Error> {
         if let Some(session) = self.rpc_server.get_ws_handle("main") {
-            let ws_handle = session.clone();
             let json = json!({
                 "event":event,
                 "payload":payload
             })
             .to_string();
-            tauri::async_runtime::spawn(async move {
-                ws_handle
-                    .lock()
-                    .await
-                    .send(Message::text(json))
-                    .await
-                    .unwrap()
-            });
+            session
+                .lock()
+                .await
+                .send(Message::text(json))
+                .await
+                .map_err(|err| {
+                    Error::PluginInitialization(
+                        "tauri-remote-ui".to_owned(),
+                        format!("Failed to send WS message. Err: {err}"),
+                    )
+                })?;
         }
         Ok(())
     }

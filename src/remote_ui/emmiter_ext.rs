@@ -42,7 +42,7 @@ where
     async fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
         if remote_ui.read().await.is_rpc_active() {
-            remote_ui.read().await.emit(event, payload.clone())?;
+            remote_ui.read().await.emit(event, payload.clone()).await?;
         }
         Emitter::emit(self, event, payload)?;
         Ok(())

@@ -42,14 +42,14 @@ export function initWebSocket(): void {
         }
     } catch {
         if (ws) return;
-        console.info("Remote RPC Attempting...");
+        console.info("Tauri-Remote-UI : Remote RPC Attempting...");
         const wsUrl = getWsUrl();
         try {
             let pingPongTimer: NodeJS.Timeout;
             ws = new WebSocket(wsUrl);
             wsReady = new Promise((resolve, reject) => {
                 ws!.onopen = () => {
-                    console.info("Remote Connected.");
+                    console.info("Tauri-Remote-UI : Remote Connected.");
                     pingPongTimer = setInterval(() => {
                         ws?.send("ping");
                     }, 30000);
@@ -59,15 +59,17 @@ export function initWebSocket(): void {
                     ws = null;
                     wsReady = null;
                     pingPongTimer && clearInterval(pingPongTimer);
-                    console.info("Remote Dis-Connected.");
+                    console.info("Tauri-Remote-UI : Remote DisConnected.");
                     window.location.href = getUrl();
                 };
                 ws!.onerror = (e) => {
                     reject(e);
                 };
                 ws!.onmessage = ({ data }) => {
-                    let json_data = JSON.parse(data);
-                    json_data.id && filterCollection[json_data.id] && filterCollection[json_data.id](JSON.parse(json_data.payload))
+                    if (data != "pong") {
+                        let json_data = JSON.parse(data);
+                        json_data.id && filterCollection[json_data.id] && filterCollection[json_data.id](JSON.parse(json_data.payload))
+                    }
                 };
             });
         } catch (e) {
