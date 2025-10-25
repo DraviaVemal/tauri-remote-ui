@@ -18,7 +18,7 @@ use std::{collections::HashMap, env, future::Future, sync::Arc};
 use tauri::{async_runtime::JoinHandle, AppHandle, Error, Manager, Url, WebviewWindow};
 use tokio::{
     net::TcpListener,
-    sync::{Mutex, RwLock},
+    sync::{oneshot, Mutex, RwLock},
 };
 
 pub trait RemoteUiExt {
@@ -87,7 +87,10 @@ impl RpcServer {
 
     pub(crate) fn start(&mut self, remote_ui_config: RemoteUiConfig) -> Result<(), Error> {
         if self.is_active {
-            Err(Error::IllegalEventName("Server Already Running".to_owned()))
+            Err(Error::PluginInitialization(
+                "tauri-remote-ui".to_owned(),
+                "Server Already Running".to_owned(),
+            ))
         } else {
             self.remote_ui_config = remote_ui_config.clone();
             self.spawn_http_server()
@@ -127,12 +130,15 @@ impl RpcServer {
         let port = self.remote_ui_config.get_port().unwrap_or_default();
         self.is_active = true;
         // Spawn the HTTP server and store the JoinHandle so we can abort it later
+        // TODO Dynamic Port Map to UI
+        let (tx, mut _rx) = oneshot::channel::<u16>();
         let handle = tauri::async_runtime::spawn(async move {
-            if let Err(err) = create_hyper_server(origin, port, app_handle).await {
+            if let Err(err) = create_hyper_server(origin, port, app_handle, tx).await {
                 eprintln!("Failed to create hyper Server for Remote UI plugin. Err:{err}");
             }
         });
         self.http_server_thread = Some(handle);
+        // TODO Update for custom name
         let window = self.app.get_webview_window("main").unwrap();
         if self.remote_ui_config.minimize_app {
             window.minimize()?;
@@ -141,12 +147,7 @@ impl RpcServer {
             let current_url = window.url().unwrap();
             let parsed = Url::parse(current_url.as_str()).unwrap();
             let host = parsed.domain().unwrap();
-            let scheme = if parsed.scheme() == "https" {
-                "https"
-            } else {
-                "http"
-            };
-            let new_url = format!("{}://{}:{}", scheme, host, port);
+            let new_url = format!("http://{}:{}", host, port);
             self.activate_remote_ui_mode(
                 &window,
                 &new_url,
@@ -181,8 +182,8 @@ impl RpcServer {
             document.documentElement.style.height = '100%';
             document.body.style.height = '100%';
             
-            console.info("Remote UI Plugin Activated");
-            console.info("Remote UI active at: {}")
+            console.info("Tauri-Remote-UI : Remote UI Plugin Activated");
+            console.info("Tauri-Remote-UI : Remote UI active at: {}")
         }})();"#,
             html, url
         ))
@@ -209,8 +210,17 @@ async fn create_hyper_server(
     origin: &str,
     port: u16,
     app_handle: Arc<AppHandle>,
+    _tx: oneshot::Sender<u16>,
 ) -> Result<(), Error> {
     let listener = TcpListener::bind((origin, port)).await?;
+    let actual_port = listener.local_addr()?.port();
+    println!("Listening on {}:{}", origin, actual_port);
+    // tx.send(actual_port).map_err(|err| {
+    //     Error::PluginInitialization(
+    //         "tauri-remote-ui".to_owned(),
+    //         format!("Failed to get port {err}"),
+    //     )
+    // })?;
     loop {
         let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
         if !remote_ui.read().await.rpc_server.get_is_active() {
@@ -323,7 +333,10 @@ async fn handle_request(
                     }
                 }
             } else {
-                Err(Error::FailedToReceiveMessage)
+                Err(Error::PluginInitialization(
+                    "tauri-remote-ui".to_owned(),
+                    "Failed to Upgrade WS RPC".to_owned(),
+                ))
             }
         }
         ("GET", path) => wildcard_get_handler(path, app_handle)
@@ -359,20 +372,21 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
             while let Some(message_stream) = rx.next().await {
                 match message_stream {
                     Ok(message) => match message {
-                        Message::Ping(_) => {
-                            if let Err(err) = ws_sender
-                                .lock()
-                                .await
-                                .send(Message::Pong("pong".into()))
-                                .await
-                            {
-                                eprintln!("Failed Pong Err:{err}")
-                            }
-                        }
                         Message::Text(msg) => {
-                            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-                            let remote_ui_mut = remote_ui.read().await;
-                            remote_ui_mut.invoke_rpc(msg.to_string(), ws_sender.clone())?;
+                            if msg == "ping" {
+                                if let Err(err) = ws_sender
+                                    .lock()
+                                    .await
+                                    .send(Message::Text("pong".into()))
+                                    .await
+                                {
+                                    eprintln!("Failed Pong Err:{err}")
+                                }
+                            } else {
+                                let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+                                let remote_ui_mut = remote_ui.read().await;
+                                remote_ui_mut.invoke_rpc(msg.to_string(), ws_sender.clone())?;
+                            }
                         }
                         Message::Close(_) => {
                             println!("Server Socket Closed")

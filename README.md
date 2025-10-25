@@ -1,6 +1,38 @@
 # Tauri Remote UI
 
-**Tauri Remote UI** is a plugin that allows you to expose your Tauri application's UI to any web browser, enabling seamless remote interaction for development and end-to-end testing. The plugin bridges your native app and commercial browsers, letting you use standard web automation tools for testing and debugging—without modifying your app's logic.
+**Tauri Remote UI** is a plugin that allows you to expose your Tauri application's UI to any web browser.
+
+## Features
+
+- Seamless enable/diable integration
+- Network level access control setting
+
+## Supports
+
+|Environment|Support|
+|-|-|
+|Windows|✅|
+|Mac|✅|
+|Linux|✅|
+|Android|❌|
+|iOS|❌|
+
+## Use Case
+
+- Enabling seamless remote interaction for development debugging—without modifying your app's logic.
+- Enabling end-to-end testing of tauri application using standard web automation tools like playwright.
+  - Note : Based on tauri target OS the webkit will change windows will be 100% match test case as both are chromium rest of OS around maximum 10% UI difference are expected from actual application
+- Enable remote access feature for local close ciruit hardware related application
+
+## Planned Features
+
+- Multiple Window of Tauri app support in Remote UI logic
+- SSO Ingration Option
+- Network Latency Tracking
+- Custom Starting window name options
+- Dynamic Port mapping
+- SSL Certificate ingration
+- Authendication system for remote access (User_id,Password)
 
 ## [Documents](https://docs.draviavemal.com)
 
