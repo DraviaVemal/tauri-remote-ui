@@ -1,11 +1,17 @@
-# Tauri Remote UI
+# tauri-remote-ui  (AGPL-3.0)
 
 **Tauri Remote UI** is a plugin that allows you to expose your Tauri application's UI to any web browser.
 
-## Features
+## 📜 License
+
+- Open Source: AGPL-3.0 (see LICENSE)
+- Commercial: Available via sponsorship (see LICENSE)
+
+## ✨ Features
 
 - Seamless enable/diable integration
 - Network level access control setting
+- Network latency tracking
 
 ## Supports
 
