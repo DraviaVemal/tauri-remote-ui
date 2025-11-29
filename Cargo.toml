@@ -1,7 +1,7 @@
 [package]
 name = "tauri-remote-ui"
 version = "1.0.0"
-license = "MIT"
+license = "AGPL-3.0-only"
 authors = ["DraviaVemal"]
 description = "A Tauri plugin that exposes the application’s UI to a web browser, allowing full interaction while the native app continues running. This enables frontend debug, end-to-end UI testing using existing web-based testing tools without requiring modifications to the app itself."
 edition = "2021"

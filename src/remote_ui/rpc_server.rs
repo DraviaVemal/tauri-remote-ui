@@ -1,4 +1,4 @@
-// MIT License
+// AGPL-3.0-only License
 // Copyright (c) 2025 DraviaVemal
 // See LICENSE file in the root directory.
 
@@ -253,6 +253,21 @@ async fn handle_request(
 ) -> Result<Response<Full<Bytes>>, Error> {
     let path = request.uri().path().to_string();
     match (request.method().as_str(), path.as_str()) {
+        ("GET", "/keep_alive") => {
+            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+            if remote_ui.read().await.rpc_server.get_is_active() {
+                let response = Response::builder()
+                    .header("Content-Type", "text/plain; charset=UTF-8".to_owned())
+                    .body(Full::new(Bytes::from("alive")))
+                    .map_err(|err| {
+                        Error::AssetNotFound(format!("Failed to respond to keep alive. Err:{err}"))
+                    })?;
+                Ok(response)
+            } else {
+                not_found()
+                    .map_err(|err| Error::AssetNotFound(format!("Keep alive failed. {:?}", err)))
+            }
+        }
         ("GET", "/remote_ui_info") => {
             let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
             if !remote_ui
@@ -290,29 +305,6 @@ async fn handle_request(
                 Ok(response)
             }
         }
-        ("GET", "/remote_ui_disconnect") => {
-            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-            let redirect_html = if let Some(redirect_html) = remote_ui
-                .read()
-                .await
-                .rpc_server
-                .remote_ui_config
-                .custom_disconnect_ui
-                .as_ref()
-            {
-                redirect_html.to_string()
-            } else {
-                include_str!("redirect.html").to_string()
-            };
-
-            let response = Response::builder()
-                .header("Content-Type", "text/html; charset=UTF-8".to_owned())
-                .body(Full::new(Bytes::from(redirect_html)))
-                .map_err(|err| {
-                    Error::AssetNotFound(format!("Failed to Load Disconnect Page. Err:{err}"))
-                })?;
-            Ok(response)
-        }
         ("GET", "/remote_ui_ws") => {
             if hyper_tungstenite::is_upgrade_request(&request) {
                 match hyper_tungstenite::upgrade(request, None) {
@@ -338,6 +330,29 @@ async fn handle_request(
                     "Failed to Upgrade WS RPC".to_owned(),
                 ))
             }
+        }
+        ("GET", "/remote_ui_disconnect") => {
+            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+            let redirect_html = if let Some(redirect_html) = remote_ui
+                .read()
+                .await
+                .rpc_server
+                .remote_ui_config
+                .custom_disconnect_ui
+                .as_ref()
+            {
+                redirect_html.to_string()
+            } else {
+                include_str!("redirect.html").to_string()
+            };
+
+            let response = Response::builder()
+                .header("Content-Type", "text/html; charset=UTF-8".to_owned())
+                .body(Full::new(Bytes::from(redirect_html)))
+                .map_err(|err| {
+                    Error::AssetNotFound(format!("Failed to Load Disconnect Page. Err:{err}"))
+                })?;
+            Ok(response)
         }
         ("GET", path) => wildcard_get_handler(path, app_handle)
             .await

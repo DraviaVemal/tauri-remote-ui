@@ -27,6 +27,8 @@ function getUrl(): string {
     return wsUrl;
 }
 
+export let latencyMs: number | null = null;
+
 /**
  * Initialize the WebSocket connection
  * This should be called once at the start of your application
@@ -45,15 +47,28 @@ export function initWebSocket(): void {
         console.info("Tauri-Remote-UI : Remote RPC Attempting...");
         const wsUrl = getWsUrl();
         try {
+            let lastPingTimestamp = Date.now();
             let pingPongTimer: NodeJS.Timeout;
             ws = new WebSocket(wsUrl);
             wsReady = new Promise((resolve, reject) => {
                 ws!.onopen = () => {
                     console.info("Tauri-Remote-UI : Remote Connected.");
                     pingPongTimer = setInterval(() => {
+                        lastPingTimestamp = Date.now();
                         ws?.send("ping");
                     }, 30000);
                     resolve();
+                };
+                ws!.onmessage = ({ data }) => {
+                    if (data === "pong") {
+                        latencyMs = Date.now() - lastPingTimestamp;
+                        if (latencyMs > 200) {
+                            console.warn(`Tauri-Remote-UI : High latency detected - ${latencyMs}ms`);
+                        }
+                        return;
+                    }
+                    let json_data = JSON.parse(data);
+                    json_data.id && filterCollection[json_data.id] && filterCollection[json_data.id](JSON.parse(json_data.payload))
                 };
                 ws!.onclose = () => {
                     ws = null;
@@ -64,12 +79,6 @@ export function initWebSocket(): void {
                 };
                 ws!.onerror = (e) => {
                     reject(e);
-                };
-                ws!.onmessage = ({ data }) => {
-                    if (data != "pong") {
-                        let json_data = JSON.parse(data);
-                        json_data.id && filterCollection[json_data.id] && filterCollection[json_data.id](JSON.parse(json_data.payload))
-                    }
                 };
             });
         } catch (e) {
