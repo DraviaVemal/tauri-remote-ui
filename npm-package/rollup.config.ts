@@ -1,9 +1,10 @@
-import { defineConfig } from 'rollup'
-import typescript from '@rollup/plugin-typescript'
-import fg from 'fast-glob'
-import { basename, dirname, join } from 'path'
-import { opendirSync, rmSync, Dir, readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'fs'
-import { fileURLToPath } from 'url'
+import typescript from '@rollup/plugin-typescript';
+import { execSync } from 'child_process';
+import fg from 'fast-glob';
+import { copyFileSync, Dir, mkdirSync, opendirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { basename, dirname, join } from 'path';
+import { defineConfig } from 'rollup';
+import { fileURLToPath } from 'url';
 
 // cleanup dist dir
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
@@ -62,6 +63,31 @@ export default defineConfig([
 ])
 
 function preparePackageFile() {
+
+
+  if (process.env.DEVOPS_BUILD === "1") {
+    // Fetch latest tags
+    execSync('git fetch --tags --force', { stdio: 'inherit' });
+
+    // Get latest tag matching v*
+    let versionTag: string;
+    try {
+      versionTag = execSync('git describe --tags --match v* --abbrev=0').toString().trim();
+    } catch (err) {
+      throw new Error('Error retrieving Git tag');
+    }
+
+    const version = versionTag.replace(/^v/, '');
+
+    // Update package.json version
+    const pkgPath = './package.json';
+    const pkgRaw = readFileSync(pkgPath, 'utf8');
+    const pkg = JSON.parse(pkgRaw);
+    pkg.version = version;
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+
+    console.log(`Updated package.json version to ${version}`);
+  }
 
   // Select only the properties you want to include
   const publishPkg = {
