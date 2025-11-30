@@ -1,6 +1,13 @@
-// AGPL-3.0-only License
-// Copyright (c) 2025 DraviaVemal
-// See LICENSE file in the root directory.
+
+//! Remote UI Plugin Extension for Tauri
+//!
+//! This module provides the main plugin state, initialization, and core APIs for the remote UI system.
+//! It enables RPC invocation and event emission over WebSocket for Tauri applications.
+//!
+//! # License
+//! AGPL-3.0-only License
+//! Copyright (c) 2025 DraviaVemal
+//! See LICENSE file in the root directory.
 
 use crate::{RpcServer, WsPayload};
 use futures::{stream::SplitSink, SinkExt};
@@ -13,6 +20,11 @@ use std::sync::Arc;
 use tauri::{plugin::PluginApi, AppHandle, Error, Listener, Manager, Runtime};
 use tokio::sync::{Mutex, RwLock};
 
+
+/// Initialize the remote UI plugin state for Tauri.
+///
+/// This function sets up the shared state for the plugin, including the RPC server and app handle.
+/// It should be called from the plugin setup code.
 pub fn init<R, C>(app: &AppHandle, _api: PluginApi<R, C>) -> crate::Result<Arc<RwLock<RemoteUi>>>
 where
     C: DeserializeOwned,
@@ -26,18 +38,29 @@ where
     Ok(remote_ui)
 }
 
+
+/// Main plugin state for remote UI APIs.
+///
+/// Holds references to the Tauri app and the RPC server for remote UI communication.
 #[derive(Debug)]
-/// Access to the remote-ui APIs.
 pub struct RemoteUi {
+    /// Reference to the Tauri application handle.
     pub(crate) app: Arc<AppHandle>,
+    /// The RPC server instance for remote UI.
     pub(crate) rpc_server: RpcServer,
 }
 
+
 impl RemoteUi {
+    /// Returns whether the remote UI RPC server is currently active.
     pub(crate) fn is_rpc_active(&self) -> bool {
         self.rpc_server.get_is_active()
     }
 
+    /// Invoke an RPC command from a WebSocket payload.
+    ///
+    /// This method deserializes the payload, executes the command in the Tauri window,
+    /// and sends the result back over WebSocket.
     pub(crate) fn invoke_rpc(
         &self,
         payload: String,
@@ -110,7 +133,9 @@ impl RemoteUi {
         Ok(())
     }
 
-    /// Emit message to target window to listen
+    /// Emit a message to the target window over WebSocket.
+    ///
+    /// This method serializes the event and payload and sends it to the main window session if available.
     pub async fn emit<P: Serialize + Clone>(&self, event: &str, payload: P) -> Result<(), Error> {
         if let Some(session) = self.rpc_server.get_ws_handle("main") {
             let json = json!({
