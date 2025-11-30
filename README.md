@@ -2,6 +2,10 @@
 
 **Tauri Remote UI** is a plugin that allows you to expose your Tauri application's UI to any web browser.
 
+## Badges
+
+![Crates.io Version](https://img.shields.io/crates/v/tauri-remote-ui?style=flat&label=crates.io%20%3A%20tauri-remote-ui) ![NPM Version](https://img.shields.io/npm/v/tauri-remote-ui?label=npm%20%3A%20tauri-remote-ui)
+
 ## 📜 License
 
 - Open Source: AGPL-3.0 (see LICENSE)
