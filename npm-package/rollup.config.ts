@@ -76,16 +76,9 @@ function preparePackageFile() {
     } catch (err) {
       throw new Error('Error retrieving Git tag');
     }
-
     const version = versionTag.replace(/^v/, '');
-
     // Update package.json version
-    const pkgPath = './package.json';
-    const pkgRaw = readFileSync(pkgPath, 'utf8');
-    const pkg = JSON.parse(pkgRaw);
     pkg.version = version;
-    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-
     console.log(`Updated package.json version to ${version}`);
   }
 

@@ -7,10 +7,13 @@
  */
 
 export let ws: WebSocket | null = null;
+export let listenEvent: EventTarget = new EventTarget();
 export let wsReady: Promise<void> | null = null;
 export const filterCollection: {
     [msg_id: string]: (response: any) => any
 } = {};
+export let latencyMs: number = 0;
+
 /**
  * Get the WebSocket URL based on the current window location
  */
@@ -26,8 +29,6 @@ function getUrl(): string {
     const wsUrl = `${loc.protocol}//${loc.host}/remote_ui_disconnect`;
     return wsUrl;
 }
-
-export let latencyMs: number | null = null;
 
 /**
  * Initialize the WebSocket connection
@@ -53,10 +54,12 @@ export function initWebSocket(): void {
             wsReady = new Promise((resolve, reject) => {
                 ws!.onopen = () => {
                     console.info("Tauri-Remote-UI : Remote Connected.");
+                    lastPingTimestamp = Date.now();
+                    ws?.send("ping");
                     pingPongTimer = setInterval(() => {
                         lastPingTimestamp = Date.now();
                         ws?.send("ping");
-                    }, 30000);
+                    }, 10000);
                     resolve();
                 };
                 ws!.onmessage = ({ data }) => {
@@ -67,8 +70,12 @@ export function initWebSocket(): void {
                         }
                         return;
                     }
-                    let json_data = JSON.parse(data);
-                    json_data.id && filterCollection[json_data.id] && filterCollection[json_data.id](JSON.parse(json_data.payload))
+                    let jsonData = JSON.parse(data);
+                    if (jsonData.id && filterCollection[jsonData.id]) {
+                        filterCollection[jsonData.id](JSON.parse(jsonData.payload))
+                    } else {
+                        listenEvent.dispatchEvent(new MessageEvent(jsonData.event, { data: jsonData }));
+                    }
                 };
                 ws!.onclose = () => {
                     ws = null;

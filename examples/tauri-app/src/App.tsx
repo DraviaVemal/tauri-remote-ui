@@ -1,11 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from "tauri-remote-ui/api/core";
-import { listen } from "tauri-remote-ui/api/event";
+import { listen, latencyMs } from "tauri-remote-ui/api/event";
 import './styles/App.css';
 
 const App: React.FC = () => {
 
     let [counter, setCounter] = useState(0);
+    const [latency, setLatency] = useState(latencyMs);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setLatency(latencyMs);
+        }, 500); // update every 500ms
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         lstn();
@@ -63,6 +71,7 @@ const App: React.FC = () => {
                     }}>Exit</button>
                 </div>
             </header>
+            <h4>Latency: {latency} ms</h4>
         </div >
     );
 };

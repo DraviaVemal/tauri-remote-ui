@@ -4,9 +4,9 @@
  * This module handles listening to events from the Tauri application via WebSocket
  */
 import { EventCallback, EventName, Options, listen as TauriListen, UnlistenFn } from '@tauri-apps/api/event';
-import { initWebSocket, ws, wsReady } from '../../socket';
-
+import { initWebSocket, listenEvent, wsReady } from '../../socket';
 export type { UnlistenFn } from '@tauri-apps/api/event';
+export { latencyMs } from "../../socket";
 
 /**
  * Listen to events from the Tauri application
@@ -26,28 +26,16 @@ export async function listen<T>(event: EventName, handler: EventCallback<T>, opt
         if (wsReady) {
             await wsReady;
         }
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            // Handle WebSocket messages for events
-            const messageHandler = (wsEvent: MessageEvent) => {
-                try {
-                    const data = JSON.parse(wsEvent.data);
-                    if (data.event === event) {
-                        handler(data);
-                    }
-                } catch (err) {
-                    console.error(err);
-                    throw new Error('Error handling WebSocket event');
-                }
-            };
+        // Handle WebSocket messages for events
+        const messageHandler = ({ data }: MessageEvent) => {
+            handler(data);
+        };
 
-            ws.addEventListener('message', messageHandler);
+        listenEvent.addEventListener(event, messageHandler as any);
 
-            // Return an unlisten function
-            return () => {
-                ws?.removeEventListener('message', messageHandler);
-            };
-        } else {
-            throw new Error("No WebSocket or Tauri IPC available to invoke");
-        }
+        // Return an unlisten function
+        return () => {
+            listenEvent.removeEventListener(event, messageHandler as any);
+        };
     }
 }
