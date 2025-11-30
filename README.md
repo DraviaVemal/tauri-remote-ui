@@ -38,7 +38,6 @@
 
 - Multiple Window of Tauri app support in Remote UI logic
 - SSO Ingration Option
-- Network Latency Tracking
 - Custom Starting window name options
 - Dynamic Port mapping
 - SSL Certificate ingration
