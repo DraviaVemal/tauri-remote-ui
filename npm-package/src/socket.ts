@@ -6,6 +6,11 @@
  * exported from `./api/core` and `./api/event`.
  */
 
+import { PACKAGE_VERSION } from './version';
+
+/** Wire prefix used by the version-handshake exchange. */
+const VERSION_PREFIX = 'version:';
+
 /**
  * Status discriminator on the response payload sent back from the Rust side.
  *
@@ -81,6 +86,7 @@ export function initWebSocket(): void {
         wsReady = new Promise<void>((resolve, reject) => {
             socket.onopen = () => {
                 console.info('Tauri-Remote-UI : Remote Connected.');
+                socket.send(`${VERSION_PREFIX}${PACKAGE_VERSION}`);
                 lastPingTimestamp = Date.now();
                 socket.send('ping');
                 pingPongTimer = setInterval(() => {
@@ -95,6 +101,18 @@ export function initWebSocket(): void {
                     if (latencyMs > 200) {
                         console.warn(
                             `Tauri-Remote-UI : High latency detected - ${latencyMs}ms`
+                        );
+                    }
+                    return;
+                }
+                if (typeof data === 'string' && data.startsWith(VERSION_PREFIX)) {
+                    const serverVersion = data.slice(VERSION_PREFIX.length);
+                    if (serverVersion !== PACKAGE_VERSION) {
+                        console.warn(
+                            `Tauri-Remote-UI : Version mismatch — frontend ` +
+                            `'tauri-remote-ui' npm package is ${PACKAGE_VERSION}, ` +
+                            `host crate is ${serverVersion}. Behavior is undefined; ` +
+                            `align both to the same release.`
                         );
                     }
                     return;

@@ -99,6 +99,8 @@ impl RemoteUiExt for AppHandle {
 /// Type alias for window label strings.
 type WindowLabel = String;
 
+const VERSION_PREFIX: &str = "version:";
+
 /// WebSocket sink handle for a single connection (sending side).
 pub(crate) type WsSink =
     Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>;
@@ -588,6 +590,22 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                                     .await
                                 {
                                     log::warn!("Failed to send pong: {err}");
+                                }
+                            } else if let Some(client_version) = msg.strip_prefix(VERSION_PREFIX) {
+                                let server_version = env!("CARGO_PKG_VERSION");
+                                if client_version != server_version {
+                                    log::warn!(
+                                        "Tauri Remote UI version mismatch — frontend npm package is '{client_version}', host crate is '{server_version}'. Behavior is undefined; align both to the same release."
+                                    );
+                                }
+                                let reply = format!("{VERSION_PREFIX}{server_version}");
+                                if let Err(err) = ws_sender
+                                    .lock()
+                                    .await
+                                    .send(Message::Text(reply.into()))
+                                    .await
+                                {
+                                    log::warn!("Failed to send version reply: {err}");
                                 }
                             } else {
                                 let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
