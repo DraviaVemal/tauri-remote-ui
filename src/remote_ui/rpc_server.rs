@@ -288,7 +288,7 @@ impl RpcServer {
     ) -> Result<(), Error> {
         let urls_list = render_urls_list(urls);
         let urls_csv = urls.join(", ");
-        let info_url = format!("{}/remote_ui_info", primary_url);
+        let info_url = format!("{primary_url}/remote_ui_info");
         let html = if let Some(custom_html) = custom_html {
             custom_html
                 .replace("%URLS%", &urls_csv)
@@ -442,7 +442,7 @@ async fn handle_request(
                 Ok(response)
             } else {
                 not_found()
-                    .map_err(|err| Error::AssetNotFound(format!("Keep alive failed. {:?}", err)))
+                    .map_err(|err| Error::AssetNotFound(format!("Keep alive failed. {err:?}")))
             }
         }
         ("GET", "/remote_ui_info") => {
@@ -456,7 +456,7 @@ async fn handle_request(
                 .enable_info_url
             {
                 not_found()
-                    .map_err(|err| Error::AssetNotFound(format!("File serving failed. {:?}", err)))
+                    .map_err(|err| Error::AssetNotFound(format!("File serving failed. {err:?}")))
             } else {
                 let app = app_handle.state::<Arc<RwLock<RemoteUi>>>();
                 let remote_ui_config = app.read().await.rpc_server.remote_ui_config.clone();
@@ -541,10 +541,10 @@ async fn handle_request(
         }
         ("GET", path) => wildcard_get_handler(path, app_handle)
             .await
-            .map_err(|err| Error::AssetNotFound(format!("File serving failed. {:?}", err))),
+            .map_err(|err| Error::AssetNotFound(format!("File serving failed. {err:?}"))),
 
         _ => not_found()
-            .map_err(|err| Error::AssetNotFound(format!("File serving failed. {:?}", err))),
+            .map_err(|err| Error::AssetNotFound(format!("File serving failed. {err:?}"))),
     }
 }
 
@@ -592,7 +592,7 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                             } else {
                                 let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
                                 let remote_ui_mut = remote_ui.read().await;
-                                remote_ui_mut.invoke_rpc(msg.to_string(), ws_sender.clone())?;
+                                remote_ui_mut.invoke_rpc(msg.as_ref(), ws_sender.clone())?;
                             }
                         }
                         Message::Close(_) => {
@@ -635,7 +635,7 @@ async fn wildcard_get_handler(
         let remote_state = app_handle.state::<Arc<RwLock<RemoteUi>>>();
         let remote_ui = remote_state.read().await;
         if let Some(static_path) = remote_ui.rpc_server.remote_ui_config.bundle_path.as_ref() {
-            let file_path = urlencoding::decode(&format!("{}/{}", static_path, file_path))
+            let file_path = urlencoding::decode(&format!("{static_path}/{file_path}"))
                 .unwrap_or_default()
                 .to_string();
             if let Ok(bytes) = std::fs::read(&file_path) {

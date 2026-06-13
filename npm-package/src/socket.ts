@@ -6,9 +6,20 @@
  * exported from `./api/core` and `./api/event`.
  */
 
+/**
+ * Status discriminator on the response payload sent back from the Rust side.
+ *
+ * Mirrors the `RpcStatus` enum in `src/models.rs` — keep both in sync.
+ */
+export const RpcStatus = {
+    Success: 'success',
+    Error: 'error',
+} as const;
+export type RpcStatus = typeof RpcStatus[keyof typeof RpcStatus];
+
 /** Shape of the response payload returned for a single RPC call. */
 export interface RpcResponse<T = unknown> {
-    status: 'success' | 'error';
+    status: RpcStatus;
     payload: T;
 }
 

@@ -8,6 +8,7 @@ import {
     filterCollection,
     hasTauriRuntime,
     initWebSocket,
+    RpcStatus,
     ws,
     wsReady,
 } from '../../socket';
@@ -48,7 +49,7 @@ export async function invoke<T>(
         filterCollection[requestId] = ({ status, payload }) => {
             clearTimeout(timeoutHandle);
             delete filterCollection[requestId];
-            if (status === 'success') {
+            if (status === RpcStatus.Success) {
                 resolve(payload as T);
             } else {
                 reject(payload);

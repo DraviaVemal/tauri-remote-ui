@@ -9,7 +9,7 @@
 //! Copyright (c) 2025 DraviaVemal
 //! See LICENSE file in the root directory.
 
-use crate::{RpcServer, WsPayload};
+use crate::{RpcServer, RpcStatus, WsPayload};
 use futures::{stream::SplitSink, SinkExt};
 use hyper::upgrade::Upgraded;
 use hyper_tungstenite::{tungstenite::Message, WebSocketStream};
@@ -63,10 +63,10 @@ impl RemoteUi {
     /// and sends the result back over WebSocket.
     pub(crate) fn invoke_rpc(
         &self,
-        payload: String,
+        payload: &str,
         session: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
     ) -> Result<(), Error> {
-        let ws_payload: WsPayload = serde_json::from_str(&payload).map_err(|err| {
+        let ws_payload: WsPayload = serde_json::from_str(payload).map_err(|err| {
             Error::PluginInitialization(
                 "tauri-remote-ui".to_owned(),
                 format!("Failed to parse WS payload. Err: {err}"),
@@ -133,13 +133,13 @@ impl RemoteUi {
                 .then((res) => {{
                     window.__TAURI_INTERNALS__.invoke("plugin:event|emit", {{
                         event: {ev},
-                        payload: {{ status: "success", payload: res }}
+                        payload: {{ status: "{success}", payload: res }}
                     }});
                 }})
                 .catch((err) => {{
                     window.__TAURI_INTERNALS__.invoke("plugin:event|emit", {{
                         event: {ev},
-                        payload: {{ status: "error", payload: err }}
+                        payload: {{ status: "{error}", payload: err }}
                     }});
                 }});
             "#,
@@ -147,6 +147,8 @@ impl RemoteUi {
             args = args_json,
             opts = opts_json,
             ev = event_json,
+            success = RpcStatus::Success.as_str(),
+            error = RpcStatus::Error.as_str(),
         );
         window.eval(js)?;
         Ok(())

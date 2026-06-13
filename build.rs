@@ -30,7 +30,7 @@ fn main() {
             .replace('v', "");
 
         // Set as environment variable for Rust
-        println!("cargo:rustc-env=GIT_VERSION={}", version);
+        println!("cargo:rustc-env=GIT_VERSION={version}");
 
         // Overwrite version in Cargo.toml based on Git tag
         // This ensures the package version always matches the latest Git tag
@@ -42,7 +42,7 @@ fn main() {
             .map(|line| {
                 if line.starts_with("version =") {
                     // Replace the version line with the one from Git tag
-                    format!("version = \"{}\"", version)
+                    format!("version = \"{version}\"")
                 } else {
                     line.to_string()
                 }
@@ -52,7 +52,7 @@ fn main() {
         updated_cargo_toml.push('\n'); // Ensure file ends with newline
         fs::write(cargo_toml_path, updated_cargo_toml).expect("Failed to update Cargo.toml");
 
-        println!("Updated Cargo.toml version to {}", version);
+        println!("Updated Cargo.toml version to {version}");
     }
 
     tauri_plugin::Builder::new(COMMANDS).build();

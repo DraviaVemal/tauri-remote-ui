@@ -175,3 +175,28 @@ pub struct WsPayload {
     pub option: Option<Value>,
 }
 
+/// Status discriminator on the response payload sent back to the remote UI.
+///
+/// Wire format is the lowercase string of each variant (`"success"` or
+/// `"error"`). The matching TypeScript constant lives in
+/// `npm-package/src/socket.ts` so both sides share a single source of truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RpcStatus {
+    /// The invoked command resolved successfully.
+    Success,
+    /// The invoked command rejected or threw.
+    Error,
+}
+
+impl RpcStatus {
+    /// The lowercase wire-format string for this status.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Error => "error",
+        }
+    }
+}
+
