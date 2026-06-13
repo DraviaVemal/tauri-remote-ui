@@ -5,47 +5,47 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Copy, Serialize)]
+/// Access scope the remote UI HTTP/WebSocket server allows connections from.
+///
+/// This describes *who* may connect, not which IP family the listener uses —
+/// the server always binds to an address sufficient to satisfy the scope and
+/// applies a peer-address allow-list at request time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OriginType {
+    /// Only the local machine (loopback) can connect. Binds to `127.0.0.1`.
+    /// Most secure default.
     Localhost,
-    Direct,
+    /// Only hosts on the same local subnet(s) as this machine can connect.
+    /// Binds to `0.0.0.0` and rejects peers whose address is not within any
+    /// configured local interface subnet.
+    Subnet,
+    /// Any host that can route to this machine may connect. Binds to
+    /// `0.0.0.0` with no peer filtering. Use with care.
     Any,
 }
 
-impl From<OriginType> for &str {
-    fn from(value: OriginType) -> Self {
-        match value {
+impl OriginType {
+    /// The address the TCP listener binds to for this scope.
+    pub fn bind_address(self) -> &'static str {
+        match self {
             OriginType::Localhost => "127.0.0.1",
-            OriginType::Direct => "::",
-            _ => "0.0.0.0",
+            OriginType::Subnet | OriginType::Any => "0.0.0.0",
         }
     }
 }
 
-#[derive(Serialize)]
-pub struct RemoteUiEvent<P> {
-    pub event_name: String,
-    pub window_label: Option<String>,
-    pub payload: P,
+impl From<OriginType> for &'static str {
+    fn from(value: OriginType) -> Self {
+        value.bind_address()
+    }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EmitRequest {
-    pub value: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EmitResponse {
-    pub value: Option<String>,
-}
-
-/// Describe this struct.
-/// # Fields
-/// - `allowed_origin` (`Vec<String>`) - Allowed orgin
-/// - `port` (`Option<u16>`) - Set None for random port and value for specific port to use
+/// Configuration for the remote UI server.
+///
+/// Build with [`RemoteUiConfig::default`] and chain the `set_*` / `enable_*` /
+/// `disable_*` builder methods to customise behaviour before passing the value
+/// to [`crate::RemoteUiExt::start_remote_ui`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteUiConfig {
@@ -53,6 +53,7 @@ pub struct RemoteUiConfig {
     pub(crate) allowed_origin: OriginType,
     pub(crate) port: Option<u16>,
     pub(crate) bundle_path: Option<String>,
+    pub(crate) primary_window_label: String,
     pub(crate) minimize_app: bool,
     pub(crate) enable_info_url: bool,
     pub(crate) custom_blocking_ui: Option<String>,
@@ -66,6 +67,7 @@ impl Default for RemoteUiConfig {
             allowed_origin: OriginType::Localhost,
             port: None,
             bundle_path: None,
+            primary_window_label: "main".to_owned(),
             enable_info_url: true,
             minimize_app: false,
             custom_disconnect_ui: None,
@@ -75,71 +77,96 @@ impl Default for RemoteUiConfig {
 }
 
 impl RemoteUiConfig {
-    /// This enable tauri actual UI and navigate to same path without blocking the actual UI
-    pub fn enable_application_ui(mut self) -> RemoteUiConfig {
+    /// Keep the original Tauri UI active and let it navigate to the same path
+    /// as the remote UI, instead of replacing it with a blocking screen.
+    pub fn enable_application_ui(mut self) -> Self {
         self.application_ui = true;
         self
     }
-    /// On server start the actual tauri app will minimize from screen
-    pub fn minimize_app(mut self) -> RemoteUiConfig {
+
+    /// Minimize the host Tauri window when the remote UI server starts.
+    pub fn minimize_app(mut self) -> Self {
         self.minimize_app = true;
         self
     }
 
-    /// Default info url path will be responded with 404
-    pub fn disable_info_url(mut self) -> RemoteUiConfig {
+    /// Disable the `/remote_ui_info` endpoint. After calling this, requests to
+    /// that path will respond with `404 Not Found`.
+    pub fn disable_info_url(mut self) -> Self {
         self.enable_info_url = false;
         self
     }
 
-    /// Allowed origin IP the web server accept to respond
-    pub fn set_allowed_origin(mut self, allowed_origin: OriginType) -> RemoteUiConfig {
+    /// Set the network origin that the remote UI server binds to.
+    pub fn set_allowed_origin(mut self, allowed_origin: OriginType) -> Self {
         self.allowed_origin = allowed_origin;
         self
     }
 
-    /// Set the target port to use. If not set random port will be assigned see UI or console for info
-    pub fn set_port(mut self, port: Option<u16>) -> RemoteUiConfig {
+    /// Set the TCP port to listen on. Pass `None` (the default) to let the OS
+    /// pick a free port — the chosen port is then surfaced via
+    /// [`crate::RemoteUiExt::remote_ui_port`].
+    pub fn set_port(mut self, port: Option<u16>) -> Self {
         self.port = port;
         self
     }
 
-    /// Html bundle path so the remote ui server will server the content
-    pub fn set_bundle_path(mut self, bundle_path: Option<String>) -> RemoteUiConfig {
+    /// Override the static bundle path to serve assets from. Defaults to the
+    /// Tauri-configured `frontend_dist`, falling back to `../dist`.
+    pub fn set_bundle_path(mut self, bundle_path: Option<String>) -> Self {
         self.bundle_path = bundle_path;
         self
     }
 
-    /// Inject standardized HTML, CSS, and JavaScript to allow customization of the UI blocking message during a remote session
-    /// Pass %URL% where URL will be updated and %URL_INFO% for info path
-    pub fn set_custom_blocking_ui(mut self, bundle_path: Option<String>) -> RemoteUiConfig {
-        self.bundle_path = bundle_path;
+    /// Inject a custom HTML/CSS/JS payload to be displayed on the host Tauri
+    /// window while a remote session is active. The following placeholders are
+    /// substituted before the HTML is injected:
+    ///
+    /// - `%URLS%` — comma-separated list of every URL the server is reachable on.
+    /// - `%URLS_LIST%` — pre-rendered `<li><a href="…">…</a></li>` items for
+    ///   embedding inside a `<ul>` / `<ol>`.
+    /// - `%URL_INFO%` — the `/remote_ui_info` URL.
+    pub fn set_custom_blocking_ui(mut self, custom_blocking_ui: Option<String>) -> Self {
+        self.custom_blocking_ui = custom_blocking_ui;
         self
     }
 
-    /// Inject standardized HTML, CSS, and JavaScript to allow customization of the UI on disconnect/redirect screen
-    pub fn set_custom_disconnect_ui(
-        mut self,
-        custom_disconnect_ui: Option<String>,
-    ) -> RemoteUiConfig {
+    /// Inject a custom HTML/CSS/JS payload to be displayed in the remote
+    /// browser tab when the connection is closed.
+    pub fn set_custom_disconnect_ui(mut self, custom_disconnect_ui: Option<String>) -> Self {
         self.custom_disconnect_ui = custom_disconnect_ui;
         self
     }
 
-    pub fn get_allowed_origin(&self) -> OriginType {
-        self.allowed_origin.clone()
+    /// Override the label of the Tauri webview window that the remote UI
+    /// controls. Defaults to `"main"`.
+    pub fn set_primary_window_label(mut self, label: impl Into<String>) -> Self {
+        self.primary_window_label = label.into();
+        self
     }
 
-    pub fn get_port(&self) -> Option<u16> {
-        self.port.clone()
+    /// The configured network origin.
+    pub fn allowed_origin(&self) -> OriginType {
+        self.allowed_origin
     }
 
-    pub fn get_bundle_path(&self) -> Option<String> {
-        self.bundle_path.clone()
+    /// The configured port, if any.
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    }
+
+    /// The configured bundle path, if any.
+    pub fn bundle_path(&self) -> Option<&str> {
+        self.bundle_path.as_deref()
+    }
+
+    /// The configured primary window label.
+    pub fn primary_window_label(&self) -> &str {
+        &self.primary_window_label
     }
 }
 
-// Structure representing the payload of an RPC invoke request
+/// WebSocket payload describing an RPC invoke request from the remote UI.
 #[derive(Debug, Deserialize)]
 pub struct WsPayload {
     pub id: usize,
@@ -148,29 +175,3 @@ pub struct WsPayload {
     pub option: Option<Value>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) enum RpcResponseStatus {
-    Success,
-    Error,
-    Invalid,
-}
-
-impl From<RpcResponseStatus> for &str {
-    fn from(value: RpcResponseStatus) -> Self {
-        match value {
-            RpcResponseStatus::Success => "success",
-            RpcResponseStatus::Error => "error",
-            _ => "invalid",
-        }
-    }
-}
-
-impl From<&str> for RpcResponseStatus {
-    fn from(value: &str) -> Self {
-        match value {
-            "success" => RpcResponseStatus::Success,
-            "error" => RpcResponseStatus::Error,
-            _ => RpcResponseStatus::Invalid,
-        }
-    }
-}

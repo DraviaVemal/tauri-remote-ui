@@ -8,16 +8,37 @@
   "repository": {
     "url": "https://github.com/DraviaVemal/tauri-remote-ui"
   },
-  "types": "./index.d.ts",
-  "main": "./index.cjs",
-  "module": "./index.js",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "exports": {
-    "types": "./dist/index.d.ts",
-    "import": "./dist/index.js",
-    "require": "./dist/index.cjs"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./api/app": {
+      "types": "./dist/api/app/index.d.ts",
+      "import": "./dist/api/app/index.js",
+      "require": "./dist/api/app/index.cjs"
+    },
+    "./api/core": {
+      "types": "./dist/api/core/index.d.ts",
+      "import": "./dist/api/core/index.js",
+      "require": "./dist/api/core/index.cjs"
+    },
+    "./api/event": {
+      "types": "./dist/api/event/index.d.ts",
+      "import": "./dist/api/event/index.js",
+      "require": "./dist/api/event/index.cjs"
+    }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "rollup --config rollup.config.ts --configPlugin typescript",
+    "typecheck": "tsc --noEmit",
     "pretest": "pnpm build"
   },
   "peerDependencies": {

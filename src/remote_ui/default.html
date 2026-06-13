@@ -31,6 +31,17 @@
         border-radius: 4px;
     }
 
+    .remote-ui-connection-url ul {
+        list-style: none;
+        padding: 0;
+        margin: 8px 0 0 0;
+    }
+
+    .remote-ui-connection-url li {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        margin: 2px 0;
+    }
+
     .remote-ui-fotter {
         margin-top: 20px;
         font-size: 14px;
@@ -46,7 +57,8 @@
     </p>
 
     <div class="remote-ui-connection-url">
-        <p>Connection active at: <strong>%URL%</strong></p>
+        <p>Connection active at:</p>
+        <ul>%URLS_LIST%</ul>
         <p>Information at: <strong>%URL_INFO%</strong></p>
     </div>
 

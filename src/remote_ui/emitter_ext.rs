@@ -67,8 +67,11 @@ where
     /// It then emits the event using Tauri's standard event system.
     async fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        if remote_ui.read().await.is_rpc_active() {
-            remote_ui.read().await.emit(event, payload.clone()).await?;
+        {
+            let guard = remote_ui.read().await;
+            if guard.is_rpc_active() {
+                guard.emit(event, payload.clone()).await?;
+            }
         }
         Emitter::emit(self, event, payload)?;
         Ok(())

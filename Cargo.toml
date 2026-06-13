@@ -23,6 +23,8 @@ mime_guess = "2"
 http-body-util = "0.1"
 futures = "0.3"
 urlencoding = "2.1"
+log = "0.4"
+if-addrs = "0.13"
 
 [build-dependencies]
 tauri-plugin = { version = "2.4.0", features = ["build"] }

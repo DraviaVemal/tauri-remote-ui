@@ -54,7 +54,7 @@ pub struct RemoteUi {
 impl RemoteUi {
     /// Returns whether the remote UI RPC server is currently active.
     pub(crate) fn is_rpc_active(&self) -> bool {
-        self.rpc_server.get_is_active()
+        self.rpc_server.is_active()
     }
 
     /// Invoke an RPC command from a WebSocket payload.
@@ -66,11 +66,21 @@ impl RemoteUi {
         payload: String,
         session: Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>,
     ) -> Result<(), Error> {
-        let ws_payload: WsPayload = serde_json::from_str(&payload)?;
+        let ws_payload: WsPayload = serde_json::from_str(&payload).map_err(|err| {
+            Error::PluginInitialization(
+                "tauri-remote-ui".to_owned(),
+                format!("Failed to parse WS payload. Err: {err}"),
+            )
+        })?;
+        let window_label = self.rpc_server.primary_window_label().to_owned();
         let window = self
             .app
-            .get_webview_window("main")
-            .ok_or(Error::AssetNotFound("WebviewWindow Not Found".to_owned()))?;
+            .get_webview_window(&window_label)
+            .ok_or_else(|| {
+                Error::AssetNotFound(format!(
+                    "Webview window '{window_label}' not found",
+                ))
+            })?;
         let req_unique_id = format!("remote-ui::result::{}", &ws_payload.id);
         self.app
             .app_handle()
@@ -87,47 +97,56 @@ impl RemoteUi {
                         ))
                         .await
                     {
-                        eprintln!("WS Send Message Failed. Err:{err}");
+                        log::error!("WS send message failed: {err}");
                     }
                 });
             });
+        // JSON-encode every interpolated input so untrusted strings from the
+        // socket cannot escape the JS string context inside `window.eval`.
+        let cmd_json = serde_json::to_string(&ws_payload.cmd).map_err(|err| {
+            Error::PluginInitialization(
+                "tauri-remote-ui".to_owned(),
+                format!("Failed to serialize cmd: {err}"),
+            )
+        })?;
+        let args_json = serde_json::to_string(&ws_payload.args).map_err(|err| {
+            Error::PluginInitialization(
+                "tauri-remote-ui".to_owned(),
+                format!("Failed to serialize args: {err}"),
+            )
+        })?;
+        let opts_json = serde_json::to_string(&ws_payload.option).map_err(|err| {
+            Error::PluginInitialization(
+                "tauri-remote-ui".to_owned(),
+                format!("Failed to serialize options: {err}"),
+            )
+        })?;
+        let event_json = serde_json::to_string(&req_unique_id).map_err(|err| {
+            Error::PluginInitialization(
+                "tauri-remote-ui".to_owned(),
+                format!("Failed to serialize event id: {err}"),
+            )
+        })?;
         let js = format!(
             r#"
-            window.__TAURI_INTERNALS__.invoke("{}",{},{})
+            window.__TAURI_INTERNALS__.invoke({cmd}, {args}, {opts})
                 .then((res) => {{
-                        window.__TAURI_INTERNALS__.invoke("plugin:event|emit",{{
-                        event:"{}",
-                        payload:{{
-                            status: "success",
-                            payload:res
-                        }}
-                    }})
+                    window.__TAURI_INTERNALS__.invoke("plugin:event|emit", {{
+                        event: {ev},
+                        payload: {{ status: "success", payload: res }}
+                    }});
                 }})
                 .catch((err) => {{
-                    window.__TAURI_INTERNALS__.invoke("plugin:event|emit",{{
-                        event:"{}",
-                        payload:{{
-                            status: "error",
-                            payload:err
-                        }}
-                    }})
+                    window.__TAURI_INTERNALS__.invoke("plugin:event|emit", {{
+                        event: {ev},
+                        payload: {{ status: "error", payload: err }}
+                    }});
                 }});
             "#,
-            ws_payload.cmd,
-            serde_json::to_string(&ws_payload.args).map_err(|err| {
-                Error::PluginInitialization(
-                    "tauri-remote-ui".to_owned(),
-                    format!("Failed to parse message. Err: {err}"),
-                )
-            })?,
-            serde_json::to_string(&ws_payload.option).map_err(|err| {
-                Error::PluginInitialization(
-                    "tauri-remote-ui".to_owned(),
-                    format!("Failed to parse message. Err: {err}"),
-                )
-            })?,
-            &req_unique_id,
-            &req_unique_id
+            cmd = cmd_json,
+            args = args_json,
+            opts = opts_json,
+            ev = event_json,
         );
         window.eval(js)?;
         Ok(())
@@ -135,9 +154,10 @@ impl RemoteUi {
 
     /// Emit a message to the target window over WebSocket.
     ///
-    /// This method serializes the event and payload and sends it to the main window session if available.
+    /// This method serializes the event and payload and sends it to the primary window session if available.
     pub async fn emit<P: Serialize + Clone>(&self, event: &str, payload: P) -> Result<(), Error> {
-        if let Some(session) = self.rpc_server.get_ws_handle("main") {
+        let label = self.rpc_server.primary_window_label();
+        if let Some(session) = self.rpc_server.get_ws_handle(label) {
             let json = json!({
                 "event":event,
                 "payload":payload

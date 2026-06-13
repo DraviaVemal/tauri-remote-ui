@@ -1,95 +1,128 @@
 /**
- * Tauri Remote UI - API
- * 
- * This TypeScript file serves as the main entry point for the tauri-remote-ui package.
- * It provides WebSocket initialization and shared WebSocket state for communicating
- * with a Tauri application.
+ * Tauri Remote UI - WebSocket bridge
+ *
+ * Establishes (and re-uses) a WebSocket connection back to the Tauri host
+ * application, providing the transport for the `invoke` and `listen` shims
+ * exported from `./api/core` and `./api/event`.
  */
+
+/** Shape of the response payload returned for a single RPC call. */
+export interface RpcResponse<T = unknown> {
+    status: 'success' | 'error';
+    payload: T;
+}
+
+/** Callback type stored per outstanding RPC request id. */
+export type RpcResponseHandler = (response: RpcResponse) => void;
+
+/** Subset of `window` properties this module touches, typed to avoid `any`. */
+interface TauriGlobals {
+    __TAURI_INTERNALS__?: { invoke?: unknown };
+    __TAURI__?: { invoke?: unknown };
+}
+
+/** Returns true if the page is running inside a Tauri webview. */
+export function hasTauriRuntime(): boolean {
+    const w = window as unknown as TauriGlobals;
+    return Boolean(
+        (w.__TAURI_INTERNALS__ && w.__TAURI_INTERNALS__.invoke) ||
+        (w.__TAURI__ && w.__TAURI__.invoke)
+    );
+}
 
 export let ws: WebSocket | null = null;
-export let listenEvent: EventTarget = new EventTarget();
+export const listenEvent: EventTarget = new EventTarget();
 export let wsReady: Promise<void> | null = null;
-export const filterCollection: {
-    [msg_id: string]: (response: any) => any
-} = {};
+export const filterCollection: Record<number, RpcResponseHandler> = {};
 export let latencyMs: number = 0;
 
-/**
- * Get the WebSocket URL based on the current window location
- */
+/** Build the WebSocket URL for the RPC connection. */
 function getWsUrl(): string {
     const loc = window.location;
     const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${loc.host}/remote_ui_ws`;
-    return wsUrl;
+    return `${proto}//${loc.host}/remote_ui_ws`;
 }
 
-function getUrl(): string {
+/** Build the disconnect-redirect URL the page navigates to on close. */
+function getDisconnectUrl(): string {
     const loc = window.location;
-    const wsUrl = `${loc.protocol}//${loc.host}/remote_ui_disconnect`;
-    return wsUrl;
+    return `${loc.protocol}//${loc.host}/remote_ui_disconnect`;
 }
 
 /**
- * Initialize the WebSocket connection
- * This should be called once at the start of your application
+ * Initialize the WebSocket connection on first use. A no-op when running
+ * inside Tauri (native IPC is preferred) or when the socket is already open.
  */
 export function initWebSocket(): void {
+    if (hasTauriRuntime()) {
+        return;
+    }
+    if (ws) {
+        return;
+    }
+    console.info('Tauri-Remote-UI : Remote RPC Attempting...');
+    const wsUrl = getWsUrl();
     try {
-        // If we're in a Tauri app, don't use WebSocket
-        if (((window as any).__TAURI_INTERNALS__ && (window as any).__TAURI_INTERNALS__.invoke) ||
-            (window as any).__TAURI__ && (window as any).__TAURI__.invoke) {
-            return
-        } else {
-            throw new Error("Moving to WS backup for Tauri Backend")
-        }
-    } catch {
-        if (ws) return;
-        console.info("Tauri-Remote-UI : Remote RPC Attempting...");
-        const wsUrl = getWsUrl();
-        try {
-            let lastPingTimestamp = Date.now();
-            let pingPongTimer: NodeJS.Timeout;
-            ws = new WebSocket(wsUrl);
-            wsReady = new Promise((resolve, reject) => {
-                ws!.onopen = () => {
-                    console.info("Tauri-Remote-UI : Remote Connected.");
+        let lastPingTimestamp = Date.now();
+        let pingPongTimer: ReturnType<typeof setInterval> | undefined;
+        const socket = new WebSocket(wsUrl);
+        ws = socket;
+        wsReady = new Promise<void>((resolve, reject) => {
+            socket.onopen = () => {
+                console.info('Tauri-Remote-UI : Remote Connected.');
+                lastPingTimestamp = Date.now();
+                socket.send('ping');
+                pingPongTimer = setInterval(() => {
                     lastPingTimestamp = Date.now();
-                    ws?.send("ping");
-                    pingPongTimer = setInterval(() => {
-                        lastPingTimestamp = Date.now();
-                        ws?.send("ping");
-                    }, 10000);
-                    resolve();
-                };
-                ws!.onmessage = ({ data }) => {
-                    if (data === "pong") {
-                        latencyMs = Date.now() - lastPingTimestamp;
-                        if (latencyMs > 200) {
-                            console.warn(`Tauri-Remote-UI : High latency detected - ${latencyMs}ms`);
-                        }
-                        return;
+                    socket.send('ping');
+                }, 10000);
+                resolve();
+            };
+            socket.onmessage = ({ data }) => {
+                if (data === 'pong') {
+                    latencyMs = Date.now() - lastPingTimestamp;
+                    if (latencyMs > 200) {
+                        console.warn(
+                            `Tauri-Remote-UI : High latency detected - ${latencyMs}ms`
+                        );
                     }
-                    let jsonData = JSON.parse(data);
-                    if (jsonData.id && filterCollection[jsonData.id]) {
-                        filterCollection[jsonData.id](JSON.parse(jsonData.payload))
-                    } else {
-                        listenEvent.dispatchEvent(new MessageEvent(jsonData.event, { data: jsonData }));
+                    return;
+                }
+                let jsonData: { id?: number; event?: string; payload?: string };
+                try {
+                    jsonData = JSON.parse(data);
+                } catch (err) {
+                    console.warn('Tauri-Remote-UI : Failed to parse message', err);
+                    return;
+                }
+                if (typeof jsonData.id === 'number' && filterCollection[jsonData.id]) {
+                    try {
+                        const parsed: RpcResponse = JSON.parse(jsonData.payload ?? 'null');
+                        filterCollection[jsonData.id](parsed);
+                    } catch (err) {
+                        console.warn('Tauri-Remote-UI : Failed to parse RPC payload', err);
                     }
-                };
-                ws!.onclose = () => {
-                    ws = null;
-                    wsReady = null;
-                    pingPongTimer && clearInterval(pingPongTimer);
-                    console.info("Tauri-Remote-UI : Remote DisConnected.");
-                    window.location.href = getUrl();
-                };
-                ws!.onerror = (e) => {
-                    reject(e);
-                };
-            });
-        } catch (e) {
-            console.error(e);
-        }
+                } else if (jsonData.event) {
+                    listenEvent.dispatchEvent(
+                        new MessageEvent(jsonData.event, { data: jsonData })
+                    );
+                }
+            };
+            socket.onclose = () => {
+                ws = null;
+                wsReady = null;
+                if (pingPongTimer !== undefined) {
+                    clearInterval(pingPongTimer);
+                }
+                console.info('Tauri-Remote-UI : Remote Disconnected.');
+                window.location.href = getDisconnectUrl();
+            };
+            socket.onerror = (e) => {
+                reject(e);
+            };
+        });
+    } catch (e) {
+        console.error(e);
     }
 }
+
