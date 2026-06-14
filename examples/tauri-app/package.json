@@ -10,7 +10,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/api": "^2.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tauri-remote-ui": "file:../../npm-package/dist"
