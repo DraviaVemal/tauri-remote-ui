@@ -29,7 +29,6 @@ use hyper_tungstenite::{tungstenite::Message, HyperWebsocket, WebSocketStream};
 use hyper_util::rt::TokioIo;
 use std::{
     collections::HashMap,
-    env,
     future::Future,
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -96,14 +95,11 @@ impl RemoteUiExt for AppHandle {
 }
 
 
-/// Type alias for window label strings.
-type WindowLabel = String;
-
-const VERSION_PREFIX: &str = "version:";
-
 /// WebSocket sink handle for a single connection (sending side).
 pub(crate) type WsSink =
     Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>;
+
+const VERSION_PREFIX: &str = "version:";
 
 /// The main Remote UI RPC server struct.
 ///
@@ -117,7 +113,7 @@ pub struct RpcServer {
     /// Configuration for the remote UI server.
     remote_ui_config: RemoteUiConfig,
     /// Map of window labels to WebSocket handles.
-    ws_window_handle: HashMap<WindowLabel, WsSink>,
+    ws_window_handle: HashMap<String, WsSink>,
     /// Handle to the HTTP server task for aborting on stop.
     http_server_thread: Option<JoinHandle<()>>,
     /// Port the listener was bound to (resolved after start, useful when the
