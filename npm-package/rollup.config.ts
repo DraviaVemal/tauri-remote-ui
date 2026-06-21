@@ -1,15 +1,15 @@
 import typescript from '@rollup/plugin-typescript';
 import { execSync } from 'child_process';
 import fg from 'fast-glob';
-import { copyFileSync, Dir, mkdirSync, opendirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { defineConfig } from 'rollup';
 import { fileURLToPath } from 'url';
 
-// cleanup dist dir
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
-cleanDir(join(__dirname, './dist'))
-mkdirSync(join(__dirname, './dist'), { recursive: true });
+const distDir = join(__dirname, './dist');
+rmSync(distDir, { recursive: true, force: true });
+mkdirSync(distDir, { recursive: true });
 
 // Read the original package.json
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
@@ -148,28 +148,4 @@ function preparePackageFile() {
 
 function externalLibPath(path: string) {
   return `external/${basename(dirname(path))}/${basename(path)}`
-}
-
-function cleanDir(path: string) {
-  let dir: Dir
-  try {
-    dir = opendirSync(path)
-  } catch (err: any) {
-    switch (err.code) {
-      case 'ENOENT':
-        return // Noop when directory don't exists.
-      case 'ENOTDIR':
-        throw new Error(`'${path}' is not a directory.`)
-      default:
-        throw err
-    }
-  }
-
-  let file = dir.readSync()
-  while (file) {
-    const filePath = join(path, file.name)
-    rmSync(filePath, { recursive: true })
-    file = dir.readSync()
-  }
-  dir.closeSync()
 }
