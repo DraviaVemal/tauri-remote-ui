@@ -9,7 +9,7 @@ package-lock.json
 
 /.tauri
 target
-Cargo.lock
+example/**/Cargo.lock
 node_modules/
 .vscode
 
