@@ -24,6 +24,7 @@ http-body-util = "0.1"
 futures = "0.3"
 urlencoding = "2.1"
 log = "0.4"
+anyhow = "1.0.103"
 if-addrs = "0.13"
 
 [build-dependencies]
