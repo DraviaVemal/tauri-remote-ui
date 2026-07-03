@@ -11,9 +11,8 @@
 //! Copyright (c) 2025 DraviaVemal
 //! See LICENSE file in the root directory.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-
 use if_addrs::{IfAddr, Interface};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::OriginType;
 
@@ -71,13 +70,9 @@ pub(crate) fn trusted_local_subnets() -> Vec<LocalIp> {
 
 fn is_bounded_subnet(local: &LocalIp) -> bool {
     match (local.ip, local.netmask) {
-        (IpAddr::V4(ip), IpAddr::V4(mask)) => {
-            !ip.is_unspecified() && u32::from(mask) != 0
-        }
+        (IpAddr::V4(ip), IpAddr::V4(mask)) => !ip.is_unspecified() && u32::from(mask) != 0,
         (IpAddr::V6(ip), IpAddr::V6(mask)) => {
-            !ip.is_unspecified()
-                && u128::from(mask) != 0
-                && !is_ipv6_link_local(ip)
+            !ip.is_unspecified() && u128::from(mask) != 0 && !is_ipv6_link_local(ip)
         }
         _ => false,
     }
@@ -213,42 +208,65 @@ fn mask_v6(ip: Ipv6Addr, mask: Ipv6Addr) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::{Context, Error as AnyError};
     use std::net::{Ipv4Addr, Ipv6Addr};
 
-    fn v4(local_ip: &str, mask: &str) -> LocalIp {
-        LocalIp {
+    fn v4(local_ip: &str, mask: &str) -> Result<LocalIp, AnyError> {
+        Ok(LocalIp {
             name: "test".into(),
-            ip: IpAddr::V4(local_ip.parse::<Ipv4Addr>().unwrap()),
-            netmask: IpAddr::V4(mask.parse::<Ipv4Addr>().unwrap()),
-        }
+            ip: IpAddr::V4(
+                local_ip
+                    .parse::<Ipv4Addr>()
+                    .context("Failed to parse IPv4 address")?,
+            ),
+            netmask: IpAddr::V4(
+                mask.parse::<Ipv4Addr>()
+                    .context("Failed to parse IPv4 netmask")?,
+            ),
+        })
     }
 
-    fn ip4(s: &str) -> IpAddr {
-        IpAddr::V4(s.parse::<Ipv4Addr>().unwrap())
+    fn ip4(ip: &str) -> Result<IpAddr, AnyError> {
+        Ok(IpAddr::V4(
+            ip.parse::<Ipv4Addr>()
+                .context("Failed to parse IPv4 address")?,
+        ))
     }
 
-    fn ip6(s: &str) -> IpAddr {
-        IpAddr::V6(s.parse::<Ipv6Addr>().unwrap())
+    fn ip6(s: &str) -> Result<IpAddr, AnyError> {
+        Ok(IpAddr::V6(
+            s.parse::<Ipv6Addr>()
+                .context("Failed to parse IPv6 address")?,
+        ))
     }
 
     #[test]
     fn same_subnet_v4_within_24() {
-        let local = v4("192.168.1.10", "255.255.255.0");
-        assert!(same_subnet(&local, ip4("192.168.1.250")));
-        assert!(!same_subnet(&local, ip4("192.168.2.1")));
-        assert!(!same_subnet(&local, ip4("10.0.0.1")));
+        let local = v4("192.168.1.10", "255.255.255.0").expect("Failed to create local IP");
+        assert!(same_subnet(
+            &local,
+            ip4("192.168.1.250").expect("Failed to parse IP")
+        ));
+        assert!(!same_subnet(
+            &local,
+            ip4("192.168.2.1").expect("Failed to parse IP")
+        ));
+        assert!(!same_subnet(
+            &local,
+            ip4("10.0.0.1").expect("Failed to parse IP")
+        ));
     }
 
     #[test]
     fn zero_netmask_is_not_a_bounded_subnet() {
         // A /0 entry would otherwise match every IPv4 peer. Filter it out.
-        let local = v4("10.0.0.1", "0.0.0.0");
+        let local = v4("10.0.0.1", "0.0.0.0").expect("Failed to create local IP");
         assert!(!is_bounded_subnet(&local));
     }
 
     #[test]
     fn unspecified_local_ip_is_not_a_bounded_subnet() {
-        let local = v4("0.0.0.0", "255.255.255.0");
+        let local = v4("0.0.0.0", "255.255.255.0").expect("Failed to create local IP");
         assert!(!is_bounded_subnet(&local));
     }
 
@@ -256,28 +274,46 @@ mod tests {
     fn ipv6_link_local_is_not_a_bounded_subnet() {
         let local = LocalIp {
             name: "lo".into(),
-            ip: ip6("fe80::1"),
-            netmask: ip6("ffff:ffff:ffff:ffff::"),
+            ip: ip6("fe80::1").expect("Failed to parse IPv6 address"),
+            netmask: ip6("ffff:ffff:ffff:ffff::").expect("Failed to parse IPv6 netmask"),
         };
         assert!(!is_bounded_subnet(&local));
     }
 
     #[test]
     fn loopback_is_always_allowed_in_subnet_mode() {
-        assert!(peer_allowed(OriginType::Subnet, ip4("127.0.0.1")));
-        assert!(peer_allowed(OriginType::Subnet, ip6("::1")));
+        assert!(peer_allowed(
+            OriginType::Subnet,
+            ip4("127.0.0.1").expect("Failed to parse IP")
+        ));
+        assert!(peer_allowed(
+            OriginType::Subnet,
+            ip6("::1").expect("Failed to parse IP")
+        ));
     }
 
     #[test]
     fn localhost_mode_rejects_external() {
-        assert!(!peer_allowed(OriginType::Localhost, ip4("192.168.1.10")));
-        assert!(peer_allowed(OriginType::Localhost, ip4("127.0.0.1")));
+        assert!(!peer_allowed(
+            OriginType::Localhost,
+            ip4("192.168.1.10").expect("Failed to parse IP")
+        ));
+        assert!(peer_allowed(
+            OriginType::Localhost,
+            ip4("127.0.0.1").expect("Failed to parse IP")
+        ));
     }
 
     #[test]
     fn ipv4_mapped_ipv6_peer_matches_v4_subnet() {
-        let local = v4("192.168.1.10", "255.255.255.0");
-        assert!(same_subnet(&local, ip6("::ffff:192.168.1.99")));
-        assert!(!same_subnet(&local, ip6("::ffff:10.0.0.1")));
+        let local = v4("192.168.1.10", "255.255.255.0").expect("Failed to create local IP");
+        assert!(same_subnet(
+            &local,
+            ip6("::ffff:192.168.1.99").expect("Failed to parse IP")
+        ));
+        assert!(!same_subnet(
+            &local,
+            ip6("::ffff:10.0.0.1").expect("Failed to parse IP")
+        ));
     }
 }
