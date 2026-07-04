@@ -1,4 +1,3 @@
-
 //! Remote UI RPC Server implementation for Tauri applications.
 //!
 //! This module provides the `RpcServer` struct and related traits for managing a remote UI server,
@@ -38,7 +37,6 @@ use tokio::{
     net::TcpListener,
     sync::{Mutex, RwLock},
 };
-
 
 /// Extension trait for Tauri's `AppHandle` to manage the Remote UI server lifecycle.
 pub trait RemoteUiExt {
@@ -94,10 +92,8 @@ impl RemoteUiExt for AppHandle {
     }
 }
 
-
 /// WebSocket sink handle for a single connection (sending side).
-pub(crate) type WsSink =
-    Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>;
+pub(crate) type WsSink = Arc<Mutex<SplitSink<WebSocketStream<TokioIo<Upgraded>>, Message>>>;
 
 const VERSION_PREFIX: &str = "version:";
 
@@ -120,7 +116,6 @@ pub struct RpcServer {
     /// configured port was 0 / `None`).
     bound_port: Option<u16>,
 }
-
 
 impl RpcServer {
     /// Returns whether the server is currently active.
@@ -152,10 +147,7 @@ impl RpcServer {
 
     /// Start the remote UI server with the provided configuration.
     /// Returns an error if the server is already running.
-    pub(crate) async fn start(
-        &mut self,
-        remote_ui_config: RemoteUiConfig,
-    ) -> crate::Result<()> {
+    pub(crate) async fn start(&mut self, remote_ui_config: RemoteUiConfig) -> crate::Result<()> {
         if self.is_active {
             return Err(crate::Error::ServerAlreadyRunning);
         }
@@ -186,8 +178,7 @@ impl RpcServer {
     /// bound port on `self` so callers can read it via [`Self::bound_port`].
     pub(crate) async fn spawn_http_server(&mut self) -> crate::Result<()> {
         let origin: &str = self.remote_ui_config.allowed_origin().bind_address();
-        let dist_path = if let Some(frontend_path) =
-            self.app.config().build.frontend_dist.as_ref()
+        let dist_path = if let Some(frontend_path) = self.app.config().build.frontend_dist.as_ref()
         {
             if Url::parse(&frontend_path.to_string()).is_ok() {
                 return Err(crate::Error::InvalidFrontendDist);
@@ -245,19 +236,17 @@ impl RpcServer {
         self.http_server_thread = Some(handle);
 
         let window_label = self.remote_ui_config.primary_window_label().to_owned();
-        let window = self.app.get_webview_window(&window_label).ok_or_else(|| {
-            crate::Error::PrimaryWindowNotFound(window_label.clone())
-        })?;
+        let window = self
+            .app
+            .get_webview_window(&window_label)
+            .ok_or_else(|| crate::Error::PrimaryWindowNotFound(window_label.clone()))?;
         if self.remote_ui_config.minimize_app {
             window.minimize().map_err(crate::Error::Tauri)?;
         }
         if !self.remote_ui_config.application_ui {
             let origin = self.remote_ui_config.allowed_origin();
             let urls = build_reachable_urls(origin, actual_port);
-            log::info!(
-                "Tauri Remote UI reachable at: {}",
-                urls.join(", ")
-            );
+            log::info!("Tauri Remote UI reachable at: {}", urls.join(", "));
             let primary_url = urls
                 .first()
                 .cloned()
@@ -326,11 +315,13 @@ impl RpcServer {
     }
 }
 
-
 /// Run the Hyper accept loop for the already-bound listener. The loop exits
 /// when the server is marked inactive (the task is also `.abort()`ed by
 /// [`RpcServer::stop`], whichever happens first).
-async fn run_hyper_server(listener: TcpListener, app_handle: Arc<AppHandle>) -> std::io::Result<()> {
+async fn run_hyper_server(
+    listener: TcpListener,
+    app_handle: Arc<AppHandle>,
+) -> std::io::Result<()> {
     loop {
         {
             let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
@@ -345,9 +336,7 @@ async fn run_hyper_server(listener: TcpListener, app_handle: Arc<AppHandle>) -> 
             if let Err(err) = http1::Builder::new()
                 .serve_connection(
                     io,
-                    service_fn(move |req| {
-                        handle_request(req, req_app_handle.clone(), peer_addr)
-                    }),
+                    service_fn(move |req| handle_request(req, req_app_handle.clone(), peer_addr)),
                 )
                 .with_upgrades()
                 .await
@@ -396,7 +385,6 @@ fn html_escape(input: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-
 /// Handle incoming HTTP requests for the remote UI server.
 /// Routes requests to keep-alive, info, WebSocket, disconnect, or asset serving endpoints.
 async fn handle_request(
@@ -414,9 +402,7 @@ async fn handle_request(
             .remote_ui_config
             .allowed_origin();
         if !net::peer_allowed(origin, peer_addr.ip()) {
-            log::warn!(
-                "Remote UI: rejected {peer_addr} with 403 (scope: {origin:?})"
-            );
+            log::warn!("Remote UI: rejected {peer_addr} with 403 (scope: {origin:?})");
             return Response::builder()
                 .status(StatusCode::FORBIDDEN)
                 .body(Full::new(Bytes::from("Forbidden")))
@@ -541,11 +527,11 @@ async fn handle_request(
             .await
             .map_err(|err| Error::AssetNotFound(format!("File serving failed. {err:?}"))),
 
-        _ => not_found()
-            .map_err(|err| Error::AssetNotFound(format!("File serving failed. {err:?}"))),
+        _ => {
+            not_found().map_err(|err| Error::AssetNotFound(format!("File serving failed. {err:?}")))
+        }
     }
 }
-
 
 /// Handle a WebSocket connection for remote UI RPC.
 /// Manages ping/pong, message routing, and connection lifecycle.
@@ -559,10 +545,7 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
             {
                 let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
                 let mut remote_ui_mut = remote_ui.write().await;
-                primary_label = remote_ui_mut
-                    .rpc_server
-                    .primary_window_label()
-                    .to_owned();
+                primary_label = remote_ui_mut.rpc_server.primary_window_label().to_owned();
                 if let Some(existing_handle) =
                     remote_ui_mut.rpc_server.get_ws_handle(&primary_label)
                 {
@@ -630,7 +613,6 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
     }
 }
 
-
 /// Handler for all wildcard GET routes: serve file from disk (debug), then embedded (release), else 404.
 /// Used for static asset serving in the remote UI server.
 async fn wildcard_get_handler(
@@ -671,7 +653,6 @@ async fn wildcard_get_handler(
     }
     not_found()
 }
-
 
 /// Helper to return a 404 Not Found HTTP response.
 fn not_found() -> Result<Response<Full<Bytes>>, tauri::http::Error> {

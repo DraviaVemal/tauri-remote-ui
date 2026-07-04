@@ -1,4 +1,3 @@
-
 //! Emitter Extension for Tauri Remote UI
 //!
 //! This module provides the `EmitterExt` trait for extending Tauri's event emission capabilities,
@@ -14,7 +13,6 @@ use serde::Serialize;
 use std::{future::Future, sync::Arc};
 use tauri::{Emitter, Error, EventTarget, Manager, Runtime, WebviewWindow};
 use tokio::sync::RwLock;
-
 
 /// Extension trait for event emission in Tauri Remote UI.
 ///
@@ -55,7 +53,6 @@ where
     where
         F: Fn(&EventTarget) -> bool;
 }
-
 
 impl<R> EmitterExt<R> for WebviewWindow<R>
 where

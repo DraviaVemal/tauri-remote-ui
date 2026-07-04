@@ -1,4 +1,3 @@
-
 //! Remote UI Plugin Extension for Tauri
 //!
 //! This module provides the main plugin state, initialization, and core APIs for the remote UI system.
@@ -20,7 +19,6 @@ use std::sync::Arc;
 use tauri::{plugin::PluginApi, AppHandle, Error, Listener, Manager, Runtime};
 use tokio::sync::{Mutex, RwLock};
 
-
 /// Initialize the remote UI plugin state for Tauri.
 ///
 /// This function sets up the shared state for the plugin, including the RPC server and app handle.
@@ -38,7 +36,6 @@ where
     Ok(remote_ui)
 }
 
-
 /// Main plugin state for remote UI APIs.
 ///
 /// Holds references to the Tauri app and the RPC server for remote UI communication.
@@ -49,7 +46,6 @@ pub struct RemoteUi {
     /// The RPC server instance for remote UI.
     pub(crate) rpc_server: RpcServer,
 }
-
 
 impl RemoteUi {
     /// Returns whether the remote UI RPC server is currently active.
@@ -73,14 +69,9 @@ impl RemoteUi {
             )
         })?;
         let window_label = self.rpc_server.primary_window_label().to_owned();
-        let window = self
-            .app
-            .get_webview_window(&window_label)
-            .ok_or_else(|| {
-                Error::AssetNotFound(format!(
-                    "Webview window '{window_label}' not found",
-                ))
-            })?;
+        let window = self.app.get_webview_window(&window_label).ok_or_else(|| {
+            Error::AssetNotFound(format!("Webview window '{window_label}' not found",))
+        })?;
         let req_unique_id = format!("remote-ui::result::{}", &ws_payload.id);
         self.app
             .app_handle()

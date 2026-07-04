@@ -1,4 +1,3 @@
-
 //! Tauri Remote UI Plugin Library
 //!
 //! This crate provides the main entry point and exports for the remote UI plugin for Tauri applications.
@@ -14,7 +13,6 @@ use tauri::{
     Manager, Wry,
 };
 
-
 /// Re-export all public models for convenience.
 pub use models::*;
 
@@ -25,7 +23,6 @@ mod error;
 mod models;
 /// Remote UI module containing plugin logic and APIs.
 pub mod remote_ui;
-
 
 /// Initializes the remote-ui Tauri plugin.
 ///
