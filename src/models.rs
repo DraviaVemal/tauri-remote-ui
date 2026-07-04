@@ -199,4 +199,3 @@ impl RpcStatus {
         }
     }
 }
-

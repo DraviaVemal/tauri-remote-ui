@@ -5,8 +5,15 @@
   "author": "DraviaVemal",
   "description": "A Tauri plugin that exposes the application's UI to a web browser, allowing full interaction while the native app continues running. This enables end-to-end UI testing using existing web-based testing tools without requiring modifications to the app itself.",
   "type": "module",
+  "keywords": [
+    "tauri",
+    "testing",
+    "automation",
+    "plugin"
+  ],
+  "homepage": "https://docs.draviavemal.com/",
   "repository": {
-    "url": "https://github.com/DraviaVemal/tauri-remote-ui"
+    "url": "https://github.com/DraviaVemal/tauri-remote-ui",
   },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.cjs",

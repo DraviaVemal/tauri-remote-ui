@@ -2,9 +2,9 @@
 
 **Tauri Remote UI** is a plugin that allows you to expose your Tauri application's UI to any web browser.
 
-## Badges
+## Packages
 
-![Crates.io Version](https://img.shields.io/crates/v/tauri-remote-ui?style=flat&label=crates.io%20%3A%20tauri-remote-ui) ![NPM Version](https://img.shields.io/npm/v/tauri-remote-ui?label=npm%20%3A%20tauri-remote-ui)
+[![Crates.io Version](https://img.shields.io/crates/v/tauri-remote-ui?style=flat&label=crates.io%20%3A%20tauri-remote-ui)](https://crates.io/crates/tauri-remote-ui) [![NPM Version](https://img.shields.io/npm/v/tauri-remote-ui?label=npm%20%3A%20tauri-remote-ui)](https://www.npmjs.com/package/tauri-remote-ui)
 
 ## 📜 License
 
@@ -19,6 +19,10 @@ This project is **dual-licensed**:
 💜 If this project helps you or your business, please consider
 [sponsoring](https://github.com/sponsors/DraviaVemal) — sponsors get the
 commercial license, private releases, and priority support.
+
+## [Documents](https://docs.draviavemal.com)
+
+Refer document central for detailed information [docs](https://docs.draviavemal.com)
 
 ## ✨ Features
 
@@ -69,6 +73,3 @@ To audit who is being allowed through at runtime, initialize a logger in your ho
 - SSL Certificate ingration
 - Authendication system for remote access (User_id,Password)
 
-## [Documents](https://docs.draviavemal.com)
-
-Refer document central for detailed information [docs](https://docs.draviavemal.com)
