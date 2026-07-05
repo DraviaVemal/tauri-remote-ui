@@ -10,7 +10,7 @@ exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
 links = "tauri-remote-ui"
 repository = "https://github.com/DraviaVemal/tauri-remote-ui"
 keywords = ["tauri", "testing", "automation", "plugin"]
-categories = ["tauri", "testing", "automation", "plugin"]
+categories = ["gui", "development-tools::testing", "web-programming"]
 
 [dependencies]
 tauri = { version = "2" }
