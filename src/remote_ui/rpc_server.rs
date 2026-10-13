@@ -123,6 +123,11 @@ impl RpcServer {
         self.is_active
     }
 
+    /// Returns whether the server is currently active.
+    pub(crate) fn is_application_ui_active(&self) -> bool {
+        self.remote_ui_config.application_ui
+    }
+
     /// The port the listener is bound to, if the server is currently active.
     pub(crate) fn bound_port(&self) -> Option<u16> {
         self.bound_port
