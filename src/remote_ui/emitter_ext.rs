@@ -61,16 +61,21 @@ where
     /// Emit an event to the window and, if remote UI is active, also over WebSocket.
     ///
     /// This method first checks if the remote UI RPC is active, and if so, emits the event via WebSocket.
-    /// It then emits the event using Tauri's standard event system.
+    /// If the remote UI RPC is not active, the event is emitted only using Tauri's standard event system.
+    /// If the remote UI RPC is active but the application UI is not, the event is emitted only over WebSocket.
     async fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
         {
             let guard = remote_ui.read().await;
             if guard.is_rpc_active() {
                 guard.emit(event, payload.clone()).await?;
+                if guard.is_application_ui_active() {
+                    Emitter::emit(self, event, payload)?;
+                }
+            } else {
+                Emitter::emit(self, event, payload)?;
             }
         }
-        Emitter::emit(self, event, payload)?;
         Ok(())
     }
 

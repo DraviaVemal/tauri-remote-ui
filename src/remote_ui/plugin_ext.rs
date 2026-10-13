@@ -53,6 +53,11 @@ impl RemoteUi {
         self.rpc_server.is_active()
     }
 
+    /// Returns whether the remote UI RPC server is currently active.
+    pub(crate) fn is_application_ui_active(&self) -> bool {
+        self.rpc_server.is_application_ui_active()
+    }
+
     /// Invoke an RPC command from a WebSocket payload.
     ///
     /// This method deserializes the payload, executes the command in the Tauri window,
