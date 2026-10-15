@@ -208,35 +208,33 @@ fn mask_v6(ip: Ipv6Addr, mask: Ipv6Addr) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::{Context, Error as AnyError};
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::{io::Error, net::{Ipv4Addr, Ipv6Addr}};
 
-    fn v4(local_ip: &str, mask: &str) -> Result<LocalIp, AnyError> {
+    fn v4(local_ip: &str, mask: &str) -> Result<LocalIp, Error> {
         Ok(LocalIp {
             name: "test".into(),
             ip: IpAddr::V4(
                 local_ip
                     .parse::<Ipv4Addr>()
-                    .context("Failed to parse IPv4 address")?,
+                    .expect("Failed to parse IPv4 address"),
             ),
             netmask: IpAddr::V4(
                 mask.parse::<Ipv4Addr>()
-                    .context("Failed to parse IPv4 netmask")?,
+                    .expect("Failed to parse IPv4 netmask"),
             ),
         })
     }
 
-    fn ip4(ip: &str) -> Result<IpAddr, AnyError> {
+    fn ip4(ip: &str) -> Result<IpAddr, Error> {
         Ok(IpAddr::V4(
             ip.parse::<Ipv4Addr>()
-                .context("Failed to parse IPv4 address")?,
+                .expect("Failed to parse IPv4 address"),
         ))
     }
 
-    fn ip6(s: &str) -> Result<IpAddr, AnyError> {
+    fn ip6(s: &str) -> Result<IpAddr, Error> {
         Ok(IpAddr::V6(
-            s.parse::<Ipv6Addr>()
-                .context("Failed to parse IPv6 address")?,
+            s.parse::<Ipv6Addr>().expect("Failed to parse IPv6 address"),
         ))
     }
 

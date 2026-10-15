@@ -115,12 +115,18 @@ pub struct RpcServer {
     /// Port the listener was bound to (resolved after start, useful when the
     /// configured port was 0 / `None`).
     bound_port: Option<u16>,
+    // Shutdown signal for the HTTP server task.
+    shutdown_signal: tokio::sync::watch::Sender<bool>,
 }
 
 impl RpcServer {
     /// Returns whether the server is currently active.
     pub(crate) fn is_active(&self) -> bool {
         self.is_active
+    }
+
+    pub(crate) fn get_shutdown_signal(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.shutdown_signal.subscribe()
     }
 
     /// Returns whether the server is currently active.
@@ -140,6 +146,7 @@ impl RpcServer {
 
     /// Create a new `RpcServer` instance for the given app handle.
     pub(crate) fn new(app: Arc<AppHandle>) -> Self {
+        let (tx, _) = tokio::sync::watch::channel(false);
         Self {
             app,
             is_active: false,
@@ -147,6 +154,7 @@ impl RpcServer {
             ws_window_handle: HashMap::new(),
             http_server_thread: None,
             bound_port: None,
+            shutdown_signal: tx,
         }
     }
 
@@ -157,6 +165,8 @@ impl RpcServer {
             return Err(crate::Error::ServerAlreadyRunning);
         }
         self.remote_ui_config = remote_ui_config;
+        // Ignore no receivers error
+        let _ = self.shutdown_signal.send(false);
         self.spawn_http_server().await
     }
 
@@ -176,6 +186,8 @@ impl RpcServer {
         if let Some(server_handle) = self.http_server_thread.take() {
             server_handle.abort();
         }
+        // Ignore no receivers error
+        let _ = self.shutdown_signal.send(true);
         self.ws_window_handle.clear();
     }
 
@@ -323,10 +335,7 @@ impl RpcServer {
 /// Run the Hyper accept loop for the already-bound listener. The loop exits
 /// when the server is marked inactive (the task is also `.abort()`ed by
 /// [`RpcServer::stop`], whichever happens first).
-async fn run_hyper_server(
-    listener: TcpListener,
-    app_handle: Arc<AppHandle>,
-) -> std::io::Result<()> {
+async fn run_hyper_server(listener: TcpListener, app_handle: Arc<AppHandle>) -> crate::Result<()> {
     loop {
         {
             let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
@@ -546,10 +555,12 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
             let (tx, mut rx) = ws_stream.split();
             let ws_sender = Arc::new(Mutex::new(tx));
             let primary_label;
+            let mut shutdown_signal: tokio::sync::watch::Receiver<bool>;
             // Replace any existing handle for the primary window with this new one.
             {
                 let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
                 let mut remote_ui_mut = remote_ui.write().await;
+                shutdown_signal = remote_ui_mut.rpc_server.get_shutdown_signal();
                 primary_label = remote_ui_mut.rpc_server.primary_window_label().to_owned();
                 if let Some(existing_handle) =
                     remote_ui_mut.rpc_server.get_ws_handle(&primary_label)
@@ -562,7 +573,31 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                     .rpc_server
                     .set_ws_handle(&primary_label, ws_sender.clone());
             }
-            while let Some(message_stream) = rx.next().await {
+
+            // A receiver only sees changes made after it was created, so a stop that
+            // happened before this point has to be checked explicitly.
+            if *shutdown_signal.borrow() {
+                let _ = ws_sender.lock().await.close().await;
+                return Ok(());
+            }
+
+            loop {
+                let message_stream = tokio::select! {
+                    // Check shutdown first so a busy socket cannot starve it.
+                    biased;
+                    // Ok or Err (sender dropped) both mean the server is gone.
+                    _ = shutdown_signal.changed() => {
+                        log::info!("Shutdown signal received, closing WebSocket connection.");
+                        if let Err(err) = ws_sender.lock().await.close().await {
+                            log::warn!("Failed to close socket on shutdown: {err}");
+                        }
+                        break;
+                    }
+                    next = rx.next() => match next {
+                        Some(message_stream) => message_stream,
+                        None => break,
+                    },
+                };
                 match message_stream {
                     Ok(message) => match message {
                         Message::Text(msg) => {
@@ -599,6 +634,7 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                         }
                         Message::Close(_) => {
                             log::debug!("Remote UI socket closed by peer");
+                            break;
                         }
                         _ => {
                             log::trace!("Unhandled WS data frame");
@@ -606,6 +642,7 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                     },
                     Err(err) => {
                         log::warn!("Message read failed: {err}");
+                        break;
                     }
                 }
             }
