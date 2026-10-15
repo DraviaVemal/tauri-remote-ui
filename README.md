@@ -4,10 +4,10 @@
 
 ## Packages
 
-[![Crates.io Version](https://img.shields.io/crates/v/tauri-remote-ui?style=flat&label=crates.io%20%3A%20tauri-remote-ui)](https://crates.io/crates/tauri-remote-ui) [![NPM Version](https://img.shields.io/npm/v/@draviavemal/tauri-remote-ui?label=npm%20%3A%20@draviavemal/tauri-remote-ui)](https://www.npmjs.com/package/@draviavemal/tauri-remote-ui)
+[![Crates.io Version](https://img.shields.io/crates/v/tauri-remote-ui?style=flat&label=crates.io%20%3A%20tauri-remote-ui)](https://crates.io/crates/tauri-remote-ui) [![NPM Version](https://img.shields.io/npm/v/tauri-remote-ui?label=npm%20%3A%20tauri-remote-ui)](https://www.npmjs.com/package/tauri-remote-ui)
 
 ```sh
-npm install tauri-remote-ui@npm:@draviavemal/tauri-remote-ui
+npm install tauri-remote-ui
 ```
 
 The `npm:` alias keeps imports unscoped (`import { invoke } from "tauri-remote-ui/api/core"`).
