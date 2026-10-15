@@ -53,10 +53,10 @@
     "@nodelib/fs.scandir" "2.1.5"
     fastq "^1.6.0"
 
-"@rollup/plugin-typescript@^12.0.0":
-  version "12.1.4"
-  resolved "https://registry.npmjs.org/@rollup/plugin-typescript/-/plugin-typescript-12.1.4.tgz"
-  integrity sha512-s5Hx+EtN60LMlDBvl5f04bEiFZmAepk27Q+mr85L/00zPDn1jtzlTV6FWn81MaIwqfWzKxmOJrBWHU6vtQyedQ==
+"@rollup/plugin-typescript@^12.3.0":
+  version "12.3.0"
+  resolved "https://registry.yarnpkg.com/@rollup/plugin-typescript/-/plugin-typescript-12.3.0.tgz#cc51b830973bc14c9456fe6532f322f2a40f5f12"
+  integrity sha512-7DP0/p7y3t67+NabT9f8oTBFE6gGkto4SA6Np2oudYmZE/m1dt8RB0SjL1msMxFpLo631qjRCcBlAbq1ml/Big==
   dependencies:
     "@rollup/pluginutils" "^5.1.0"
     resolve "^1.22.1"
@@ -195,10 +195,10 @@
   resolved "https://registry.yarnpkg.com/@rollup/rollup-win32-x64-msvc/-/rollup-win32-x64-msvc-4.64.7.tgz#2ef9b4196efe6d6724fd71a067f3021f5f63d268"
   integrity sha512-EhX6N3XPMEnVU5cRfNgzPOKcSucsbu3nNNWuoAaEuKIqmddBKHN5b9d4rPe65T1I+FaOT176JKiZNsUBp3rqbA==
 
-"@tauri-apps/api@>=2.0.0":
-  version "2.8.0"
-  resolved "https://registry.npmjs.org/@tauri-apps/api/-/api-2.8.0.tgz"
-  integrity sha512-ga7zdhbS2GXOMTIZRT0mYjKJtR9fivsXzsyq5U3vjDL0s6DTMwYRm0UHNjzTY5dh4+LSC68Sm/7WEiimbQNYlw==
+"@tauri-apps/api@>=2.12.3":
+  version "2.12.3"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.12.3.tgz#e96869b71f5f4d711e3d49809dee204638a32a21"
+  integrity sha512-9s0PKw0p4r3kFq92jhpivYSp+cSht15o0gXpZxuQd0+dV9KCexEVkNaLELVoLdJWyoH4KlfQo5h3W2LIM8siJg==
 
 "@tsconfig/node10@^1.0.7":
   version "1.0.11"
