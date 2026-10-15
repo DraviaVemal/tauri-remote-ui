@@ -52,11 +52,11 @@
     "pretest": "pnpm build"
   },
   "peerDependencies": {
-    "@tauri-apps/api": ">=2.0.0"
+    "@tauri-apps/api": ">=2.12.3"
   },
   "devDependencies": {
-    "@rollup/plugin-typescript": "^12.0.0",
-    "@tauri-apps/api": ">=2.0.0",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "@tauri-apps/api": ">=2.12.3",
     "@types/node": "^24.3.0",
     "fast-glob": "^3.3.3",
     "rollup": "^4.9.6",
