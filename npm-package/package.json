@@ -57,7 +57,7 @@
   "devDependencies": {
     "@rollup/plugin-typescript": "^12.3.0",
     "@tauri-apps/api": ">=2.12.3",
-    "@types/node": "^24.3.0",
+    "@types/node": "^26.6.5",
     "fast-glob": "^3.3.3",
     "rollup": "^4.9.6",
     "ts-node": "^10.9.2",
