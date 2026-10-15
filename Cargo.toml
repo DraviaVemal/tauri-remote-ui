@@ -16,7 +16,7 @@ categories = ["gui", "development-tools::testing", "web-programming"]
 tauri = { version = "2" }
 serde = "1"
 thiserror = "2"
-tokio = { version = "1.47", features = ["net", "sync"] }
+tokio = { version = "1.47", features = ["net", "sync", "macros"] }
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = "0.1"
 hyper-tungstenite = "0.18"
@@ -26,7 +26,6 @@ http-body-util = "0.1"
 futures = "0.3"
 urlencoding = "2.1"
 log = "0.4"
-anyhow = "1.0.103"
 if-addrs = "0.13"
 
 [build-dependencies]
