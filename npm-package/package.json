@@ -1,5 +1,5 @@
 {
-  "name": "tauri-remote-ui",
+  "name": "@draviavemal/tauri-remote-ui",
   "license": "AGPL-3.0-only",
   "version": "1.1.0",
   "author": "DraviaVemal",
@@ -14,6 +14,9 @@
   "homepage": "https://docs.draviavemal.com/",
   "repository": {
     "url": "https://github.com/DraviaVemal/tauri-remote-ui"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.cjs",

@@ -110,7 +110,7 @@ export function initWebSocket(): void {
                     if (serverVersion !== PACKAGE_VERSION) {
                         console.warn(
                             `Tauri-Remote-UI : Version mismatch — frontend ` +
-                            `'tauri-remote-ui' npm package is ${PACKAGE_VERSION}, ` +
+                            `'@draviavemal/tauri-remote-ui' npm package is ${PACKAGE_VERSION}, ` +
                             `host crate is ${serverVersion}. Behavior is undefined; ` +
                             `align both to the same release.`
                         );
