@@ -95,7 +95,6 @@ function preparePackageFile() {
     module: pkg.module,
     repository: pkg.repository,
     publishConfig: pkg.publishConfig,
-    readme: "./README.md",
     exports: {
       ".": {
         "types": "./index.d.ts",
