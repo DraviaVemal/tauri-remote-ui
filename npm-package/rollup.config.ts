@@ -94,6 +94,7 @@ function preparePackageFile() {
     main: pkg.main,
     module: pkg.module,
     repository: pkg.repository,
+    publishConfig: pkg.publishConfig,
     readme: "./README.md",
     exports: {
       ".": {
