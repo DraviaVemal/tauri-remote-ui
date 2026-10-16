@@ -587,13 +587,16 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                     biased;
                     // Ok or Err (sender dropped) both mean the server is gone.
                     _ = shutdown_signal.changed() => {
-                        log::info!("Shutdown signal received, closing WebSocket connection.");
-                        if let Err(err) = ws_sender.lock().await.close().await {
-                            log::warn!("Failed to close socket on shutdown: {err}");
+                        if *shutdown_signal.borrow_and_update() {
+                            log::info!("Shutdown signal received, closing WebSocket connection.");
+                            if let Err(err) = ws_sender.lock().await.close().await {
+                                log::warn!("Failed to close socket on shutdown: {err}");
+                            }
+                            break;
                         }
-                        break;
+                        continue;
                     }
-                    next = rx.next() => match next {
+                    next_msg = rx.next() => match next_msg {
                         Some(message_stream) => message_stream,
                         None => break,
                     },
