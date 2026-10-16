@@ -1,3 +1,5 @@
+lockBehavior: sequential
+
 trigger:
   branches:
     include:
