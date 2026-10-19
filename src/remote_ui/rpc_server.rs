@@ -432,6 +432,7 @@ async fn handle_request(
             if remote_ui.read().await.rpc_server.is_active() {
                 let response = Response::builder()
                     .header("Content-Type", "text/plain; charset=UTF-8".to_owned())
+                    .header("X-Version", env!("CARGO_PKG_VERSION"))
                     .body(Full::new(Bytes::from("alive")))
                     .map_err(|err| {
                         Error::AssetNotFound(format!("Failed to respond to keep alive. Err:{err}"))
@@ -473,6 +474,7 @@ async fn handle_request(
                     );
                 let response = Response::builder()
                     .header("Content-Type", "text/html; charset=UTF-8".to_owned())
+                    .header("X-Version", env!("CARGO_PKG_VERSION"))
                     .body(Full::new(Bytes::from(info_html)))
                     .map_err(|err| {
                         Error::AssetNotFound(format!("Failed to Load Info Page. Err:{err}"))
@@ -495,6 +497,7 @@ async fn handle_request(
                     Err(e) => {
                         log::warn!("WebSocket upgrade error: {e}");
                         let response = Response::builder()
+                            .header("X-Version", env!("CARGO_PKG_VERSION"))
                             .status(StatusCode::BAD_REQUEST)
                             .body(Full::new(Bytes::from("WebSocket upgrade failed")))
                             .map_err(|err| {
@@ -530,6 +533,7 @@ async fn handle_request(
 
             let response = Response::builder()
                 .header("Content-Type", "text/html; charset=UTF-8".to_owned())
+                .header("X-Version", env!("CARGO_PKG_VERSION"))
                 .body(Full::new(Bytes::from(redirect_html)))
                 .map_err(|err| {
                     Error::AssetNotFound(format!("Failed to Load Disconnect Page. Err:{err}"))
@@ -682,6 +686,7 @@ async fn wildcard_get_handler(
                 let content_type = mime_guess::from_path(&file_path).first_or_octet_stream();
                 return Response::builder()
                     .header("Content-Type", content_type.to_string())
+                    .header("X-Version", env!("CARGO_PKG_VERSION"))
                     .body(Full::new(Bytes::from(bytes)));
             }
         }
@@ -692,6 +697,7 @@ async fn wildcard_get_handler(
         if let Some(asset) = app_handle.asset_resolver().get(file_path) {
             return Response::builder()
                 .header("Content-Type", content_type.to_string())
+                .header("X-Version", env!("CARGO_PKG_VERSION"))
                 .body(Full::new(Bytes::from(asset.bytes)));
         }
     }
@@ -701,6 +707,7 @@ async fn wildcard_get_handler(
 /// Helper to return a 404 Not Found HTTP response.
 fn not_found() -> Result<Response<Full<Bytes>>, tauri::http::Error> {
     Response::builder()
+        .header("X-Version", env!("CARGO_PKG_VERSION"))
         .status(StatusCode::NOT_FOUND)
         .body(Full::new(Bytes::from("Not Found!")))
 }
