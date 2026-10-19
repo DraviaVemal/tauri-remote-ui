@@ -208,8 +208,8 @@ impl RpcServer {
                 log::error!("Failed to reload webview window '{label}': {err}");
             }
         }
-        active.http_server_thread.abort();
         active.shutdown_signal.send_replace(true);
+        active.http_server_thread.abort();
     }
 
     /// Bind the TCP listener, spawn the connection-accept loop and store the
@@ -247,9 +247,9 @@ impl RpcServer {
         }
 
         let app_handle = self.app.clone();
-        let (shutdown_signal, _) = tokio::sync::watch::channel(false);
+        let (shutdown_signal, shutdown_receiver) = tokio::sync::watch::channel(false);
         let http_server_thread = tauri::async_runtime::spawn(async move {
-            if let Err(err) = run_hyper_server(listener, app_handle).await {
+            if let Err(err) = run_hyper_server(listener, app_handle, shutdown_receiver).await {
                 log::error!("Hyper server for Remote UI exited with error: {err}");
             }
         });
@@ -328,45 +328,75 @@ impl RpcServer {
         ))
     }
 
-    /// Set the WebSocket handle for a given window label.
-    pub(crate) fn set_ws_handle(&mut self, window_label: &str, ws_handle: WsSink) {
-        if let Some(active) = self.active.as_mut() {
-            active
-                .ws_window_handle
-                .insert(window_label.to_owned(), ws_handle);
-        }
+    /// Set the WebSocket handle for a given window label, returning the previous one.
+    pub(crate) fn replace_ws_handle(
+        &mut self,
+        window_label: &str,
+        ws_handle: WsSink,
+    ) -> Option<WsSink> {
+        self.active
+            .as_mut()?
+            .ws_window_handle
+            .insert(window_label.to_owned(), ws_handle)
     }
 
     /// Get the WebSocket handle for a given window label, if present.
     pub(crate) fn get_ws_handle(&self, window_label: &str) -> Option<&WsSink> {
         self.active.as_ref()?.ws_window_handle.get(window_label)
     }
-}
 
-/// Run the Hyper accept loop for the already-bound listener. The loop exits
-/// when the server is marked inactive (the task is also `.abort()`ed by
-/// [`RpcServer::stop`], whichever happens first).
-async fn run_hyper_server(listener: TcpListener, app_handle: Arc<AppHandle>) -> crate::Result<()> {
-    loop {
-        {
-            let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-            if !remote_ui.read().await.rpc_server.is_active() {
-                break;
+    /// Remove the handle for `window_label` only if it is still `ws_handle`.
+    pub(crate) fn remove_ws_handle_if_current(&mut self, window_label: &str, ws_handle: &WsSink) {
+        if let Some(active) = self.active.as_mut() {
+            let is_current = active
+                .ws_window_handle
+                .get(window_label)
+                .is_some_and(|current_handle| Arc::ptr_eq(current_handle, ws_handle));
+            if is_current {
+                active.ws_window_handle.remove(window_label);
             }
         }
-        let (stream, peer_addr) = listener.accept().await?;
+    }
+}
+
+/// Run the Hyper accept loop for the already-bound listener until shutdown is signalled.
+async fn run_hyper_server(
+    listener: TcpListener,
+    app_handle: Arc<AppHandle>,
+    mut shutdown_receiver: tokio::sync::watch::Receiver<bool>,
+) -> crate::Result<()> {
+    if *shutdown_receiver.borrow() {
+        return Ok(());
+    }
+    loop {
+        let (stream, peer_addr) = tokio::select! {
+            biased;
+            _ = shutdown_receiver.changed() => {
+                if *shutdown_receiver.borrow_and_update() {
+                    break;
+                }
+                continue;
+            }
+            accepted = listener.accept() => accepted?,
+        };
         let io = TokioIo::new(stream);
         let req_app_handle = app_handle.clone();
+        let mut connection_shutdown = shutdown_receiver.clone();
         tauri::async_runtime::spawn(async move {
-            if let Err(err) = http1::Builder::new()
+            let connection = http1::Builder::new()
                 .serve_connection(
                     io,
                     service_fn(move |req| handle_request(req, req_app_handle.clone(), peer_addr)),
                 )
-                .with_upgrades()
-                .await
-            {
-                log::warn!("Error serving Remote UI connection: {err:?}");
+                .with_upgrades();
+            tokio::pin!(connection);
+            tokio::select! {
+                result = connection.as_mut() => {
+                    if let Err(err) = result {
+                        log::warn!("Error serving Remote UI connection: {err:?}");
+                    }
+                }
+                _ = connection_shutdown.changed() => {}
             }
         });
     }
@@ -577,24 +607,25 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
             // Replace any existing handle for the primary window with this new one.
             {
                 let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
-                let mut remote_ui_mut = remote_ui.write().await;
-                let Some(signal) = remote_ui_mut.rpc_server.get_shutdown_signal() else {
-                    drop(remote_ui_mut);
-                    let _ = ws_sender.lock().await.close().await;
-                    return Ok(());
-                };
-                shutdown_signal = signal;
-                primary_label = remote_ui_mut.rpc_server.primary_window_label().to_owned();
-                if let Some(existing_handle) =
-                    remote_ui_mut.rpc_server.get_ws_handle(&primary_label)
+                let previous_handle;
                 {
+                    let mut remote_ui_mut = remote_ui.write().await;
+                    let Some(signal) = remote_ui_mut.rpc_server.get_shutdown_signal() else {
+                        drop(remote_ui_mut);
+                        let _ = ws_sender.lock().await.close().await;
+                        return Ok(());
+                    };
+                    shutdown_signal = signal;
+                    primary_label = remote_ui_mut.rpc_server.primary_window_label().to_owned();
+                    previous_handle = remote_ui_mut
+                        .rpc_server
+                        .replace_ws_handle(&primary_label, ws_sender.clone());
+                }
+                if let Some(existing_handle) = previous_handle {
                     if let Err(err) = existing_handle.lock().await.close().await {
                         log::warn!("Failed to close existing socket connection: {err}");
                     }
                 }
-                remote_ui_mut
-                    .rpc_server
-                    .set_ws_handle(&primary_label, ws_sender.clone());
             }
 
             // A receiver only sees changes made after it was created, so a stop that
@@ -671,6 +702,14 @@ async fn ws_handle(websocket: HyperWebsocket, app_handle: Arc<AppHandle>) -> Res
                         break;
                     }
                 }
+            }
+            {
+                let remote_ui = app_handle.state::<Arc<RwLock<RemoteUi>>>();
+                remote_ui
+                    .write()
+                    .await
+                    .rpc_server
+                    .remove_ws_handle_if_current(&primary_label, &ws_sender);
             }
             Ok(())
         }

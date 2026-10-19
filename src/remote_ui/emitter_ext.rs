@@ -65,16 +65,25 @@ where
     /// If the remote UI RPC is active but the application UI is not, the event is emitted only over WebSocket.
     async fn emit<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<(), Error> {
         let remote_ui = self.state::<Arc<RwLock<RemoteUi>>>();
-        {
+        let (is_rpc_active, ws_sink, is_application_ui_active) = {
             let guard = remote_ui.read().await;
-            if guard.is_rpc_active() {
-                guard.emit(event, payload.clone()).await?;
-                if guard.is_application_ui_active() {
-                    Emitter::emit(self, event, payload)?;
-                }
+            let is_rpc_active = guard.is_rpc_active();
+            let ws_sink = if is_rpc_active {
+                guard.primary_ws_sink()
             } else {
+                None
+            };
+            (is_rpc_active, ws_sink, guard.is_application_ui_active())
+        };
+        if is_rpc_active {
+            if let Some(ws_sink) = ws_sink {
+                crate::send_ws_event(&ws_sink, event, &payload).await?;
+            }
+            if is_application_ui_active {
                 Emitter::emit(self, event, payload)?;
             }
+        } else {
+            Emitter::emit(self, event, payload)?;
         }
         Ok(())
     }
