@@ -2,14 +2,11 @@ import typescript from '@rollup/plugin-typescript';
 import { execSync } from 'child_process';
 import fg from 'fast-glob';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { basename, dirname, join } from 'path';
+import { basename, dirname } from 'path';
 import { defineConfig, type Plugin } from 'rollup';
-import { fileURLToPath } from 'url';
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
-const distDir = join(__dirname, './dist');
-rmSync(distDir, { recursive: true, force: true });
-mkdirSync(distDir, { recursive: true });
+rmSync('./dist', { recursive: true, force: true });
+mkdirSync('./dist', { recursive: true });
 
 // Read the original package.json
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
@@ -97,7 +94,7 @@ function injectVersion(): Plugin {
     // Declarations are emitted from the on-disk placeholder, so rewrite them.
     writeBundle() {
       writeFileSync(
-        join(distDir, 'version.d.ts'),
+        './dist/version.d.ts',
         `export declare const PACKAGE_VERSION = ${JSON.stringify(version)};\n`
       );
     }
@@ -161,14 +158,14 @@ function preparePackageFile() {
 
   // Write the modified package.json to the dist directory
   writeFileSync(
-    join('./dist', 'package.json'),
+    './dist/package.json',
     JSON.stringify(publishPkg, null, 2)
   );
 
   // Copy README
-  copyFileSync('../README.md', join('./dist', 'README.md'));
+  copyFileSync('../README.md', './dist/README.md');
   // Copy LICENSE
-  copyFileSync('../LICENSE', join('./dist', 'LICENSE'));
+  copyFileSync('../LICENSE', './dist/LICENSE');
 }
 
 function externalLibPath(path: string) {
