@@ -164,9 +164,9 @@ impl RpcServer {
         if self.is_active {
             return Err(crate::Error::ServerAlreadyRunning);
         }
+        let (tx, _) = tokio::sync::watch::channel(false);
         self.remote_ui_config = remote_ui_config;
-        // Ignore no receivers error
-        let _ = self.shutdown_signal.send(false);
+        self.shutdown_signal = tx;
         self.spawn_http_server().await
     }
 
@@ -186,8 +186,7 @@ impl RpcServer {
         if let Some(server_handle) = self.http_server_thread.take() {
             server_handle.abort();
         }
-        // Ignore no receivers error
-        let _ = self.shutdown_signal.send(true);
+        self.shutdown_signal.send_replace(true);
         self.ws_window_handle.clear();
     }
 
