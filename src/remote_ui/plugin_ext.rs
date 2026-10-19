@@ -8,7 +8,7 @@
 //! Copyright (c) 2025 DraviaVemal
 //! See LICENSE file in the root directory.
 
-use crate::{RpcServer, RpcStatus, WsPayload};
+use crate::{RpcServer, RpcStatus, WsPayload, WsSink};
 use futures::{stream::SplitSink, SinkExt};
 use hyper::upgrade::Upgraded;
 use hyper_tungstenite::{
@@ -160,29 +160,33 @@ impl RemoteUi {
         Ok(())
     }
 
-    /// Emit a message to the target window over WebSocket.
-    ///
-    /// This method serializes the event and payload and sends it to the primary window session if available.
-    pub async fn emit<P: Serialize + Clone>(&self, event: &str, payload: P) -> Result<(), Error> {
+    /// The primary window's WebSocket sink, if a remote session is connected.
+    pub(crate) fn primary_ws_sink(&self) -> Option<WsSink> {
         let label = self.rpc_server.primary_window_label();
-        if let Some(session) = self.rpc_server.get_ws_handle(label) {
-            let json = json!({
-                "event":event,
-                "payload":payload
-            })
-            .to_string();
-            session
-                .lock()
-                .await
-                .send(Message::text(json))
-                .await
-                .map_err(|err| {
-                    Error::PluginInitialization(
-                        "tauri-remote-ui".to_owned(),
-                        format!("Failed to send WS message. Err: {err}"),
-                    )
-                })?;
-        }
-        Ok(())
+        self.rpc_server.get_ws_handle(label).cloned()
     }
+}
+
+/// Serialize and send an event frame over a WebSocket sink.
+pub(crate) async fn send_ws_event<P: Serialize>(
+    ws_sink: &WsSink,
+    event: &str,
+    payload: &P,
+) -> Result<(), Error> {
+    let json = json!({
+        "event": event,
+        "payload": payload
+    })
+    .to_string();
+    ws_sink
+        .lock()
+        .await
+        .send(Message::text(json))
+        .await
+        .map_err(|err| {
+            Error::PluginInitialization(
+                "tauri-remote-ui".to_owned(),
+                format!("Failed to send WS message. Err: {err}"),
+            )
+        })
 }
