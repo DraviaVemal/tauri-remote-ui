@@ -11,7 +11,10 @@
 use crate::{RpcServer, RpcStatus, WsPayload};
 use futures::{stream::SplitSink, SinkExt};
 use hyper::upgrade::Upgraded;
-use hyper_tungstenite::{tungstenite::Message, WebSocketStream};
+use hyper_tungstenite::{
+    tungstenite::{error::ProtocolError, Error as WsError, Message},
+    WebSocketStream,
+};
 use hyper_util::rt::TokioIo;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
@@ -85,15 +88,22 @@ impl RemoteUi {
                 let payload = handler.payload().to_string();
                 let id = ws_payload.id;
                 tauri::async_runtime::spawn(async move {
-                    if let Err(err) = session
+                    let result = session
                         .lock()
                         .await
                         .send(Message::text(
                             json!({"id":id,"payload":payload}).to_string(),
                         ))
-                        .await
-                    {
-                        log::error!("WS send message failed: {err}");
+                        .await;
+                    match result {
+                        Ok(()) => {}
+                        // A reply that was in flight when stop closed the socket.
+                        Err(WsError::Protocol(ProtocolError::SendAfterClosing))
+                        | Err(WsError::ConnectionClosed)
+                        | Err(WsError::AlreadyClosed) => {
+                            log::debug!("Dropped RPC result, WebSocket closed during shutdown");
+                        }
+                        Err(err) => log::error!("WS send message failed: {err}"),
                     }
                 });
             });
