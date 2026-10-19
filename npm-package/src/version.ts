@@ -1,9 +1,7 @@
 /**
- * Source-of-truth for the npm package's version, used in the WebSocket
- * handshake to detect frontend/backend version skew.
- *
- * **Keep this in sync with `package.json` `version` and the Rust crate's
- * `Cargo.toml` `version`.** The release flow (`DEVOPS_BUILD=1`) rewrites this
- * value from the latest git tag.
+ * Placeholder only: the rollup `inject-version` plugin replaces this file's
+ * contents at build time with the resolved package version (used in the
+ * WebSocket version handshake).
  */
-export const PACKAGE_VERSION = '1.0.1';
+
+export const PACKAGE_VERSION = '0.0.0';
